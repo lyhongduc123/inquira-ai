@@ -1,6 +1,6 @@
 <p align="center">
   <a href="" rel="noopener">
- <img width=200px height=200px src="https://i.imgur.com/6wj0hh6.jpg" alt="Project logo"></a>
+ <img width=150px height=150px src="./src/frontend/public/logo.svg" alt="Project logo"></a>
 </p>
 
 <h3 align="center">Inquira AI</h3>
@@ -8,7 +8,7 @@
 <div align="center">
 
 [![Status](https://img.shields.io/badge/status-active-success.svg)]()
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](/LICENSE)
+<!-- [![License](https://img.shields.io/badge/license-MIT-blue.svg)](/LICENSE) -->
 <!-- [![GitHub Issues](https://img.shields.io/github/issues/kylelobo/The-Documentation-Compendium.svg)](https://github.com/kylelobo/The-Documentation-Compendium/issues)
 [![GitHub Pull Requests](https://img.shields.io/github/issues-pr/kylelobo/The-Documentation-Compendium.svg)](https://github.com/kylelobo/The-Documentation-Compendium/pulls) -->
 
@@ -49,63 +49,42 @@ Frontend using Next.js, so make sure you have npm installed
 
 Backend using fastapi, so have your uv or python installed. 
 
+## Local Development
 
-### Installing
+Start the backend first, then the frontend.
 
-Installing the backend by go to the backend folder, install the dependency by using any of the python package managers like uv, pip,...
+Backend:
 
-```
-pip install .
-```
-
-Then run the backend
-```
+```powershell
+cd backend-inquira
+.\.venv\Scripts\Activate.ps1
 run
 ```
 
-Go to the frontend folder, run
+Frontend:
 
-```
+```powershell
+cd frontend-inquira
 npm install
-```
-
-Then wait until it done, run
-
-```
 npm run dev
 ```
-<!-- 
-## Running the tests <a name = "tests"></a>
 
-Explain how to run the automated tests for this system.
+Default local URLs:
 
-### Break down into end to end tests
-
-Explain what these tests test and why
-
-```
-Give an example
+```text
+Frontend: http://localhost:3000
+Backend:  http://localhost:8000
+API docs: http://localhost:8000/docs
 ```
 
-### And coding style tests
-
-Explain what these tests test and why
-
-```
-Give an example
-``` -->
-
-## Deployment <a name = "deployment"></a>
-
-On production, we build the frontend for deploy, backend still the same.
-
-```
-npm run build
-```
+## Production
+For detailed production deployment, please go to each repository details instead.
+- Backend [README.md](./src/backend/README.md)
+- Frontend [README.md](./src/frontend/README.md)
 
 ## Built Using <a name = "built_using"></a>
 
-- [pgVector](https://github.com/pgvector/pgvector) - Database
+- [pgVector](https://github.com/pgvector/pgvector) w/ [pg_search](https://github.com/paradedb/paradedb/) - Database
 - [Fastapi](https://fastapi.tiangolo.com/) - Server Framework
 - [Next.js](https://nextjs.org/) - Web Framework
 - [Shadcn](https://ui.shadcn.com/) - Web design library
