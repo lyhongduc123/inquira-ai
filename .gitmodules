@@ -1,0 +1,6 @@
+[submodule "src/frontend"]
+	path = src/frontend
+	url = https://github.com/lyhongduc123/frontend-inquira
+[submodule "src/backend"]
+	path = src/backend
+	url = https://github.com/lyhongduc123/backend-inquira
