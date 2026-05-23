@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+import { API_BASE_URL } from '@/core';
 
 /**
  * POST /api/v1/chat/stream/paper/[paper_id] - Stream chat responses for a specific paper

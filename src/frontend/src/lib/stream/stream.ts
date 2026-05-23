@@ -1,4 +1,11 @@
-import { StreamEvent, ProgressEvent, MetadataEvent, ChunkEvent, ConversationEvent } from "./event.types";
+import {
+  StreamEvent,
+  ProgressEvent,
+  MetadataEvent,
+  ConversationEvent,
+  ReasoningEvent,
+} from "./event.types";
+import { apiClient } from "@/lib/api/api-client";
 
 export interface StreamCallbacks {
   onChunk?: (chunk: string) => void;
@@ -6,6 +13,7 @@ export interface StreamCallbacks {
   onError?: (error: Error) => void;
   onMetadata?: (event: MetadataEvent) => void;
   onProgress?: (event: ProgressEvent) => void;
+  onReasoning?: (event: ReasoningEvent) => void;
   onHeartbeat?: () => void;
   onConversation?: (event: ConversationEvent) => void;
   onUnknownEvent?: (eventType: string, data: unknown) => void;
@@ -25,6 +33,7 @@ export interface StreamEventPayload {
   isRetry?: boolean;
   clientMessageId?: string;
   pipeline?: "research" | "agent";
+  paperIds?: string[];
   useHybridPipeline?: boolean; // Deprecated: kept for backward compatibility
 }
 
@@ -75,10 +84,11 @@ export async function streamTask(
     }
   };
 
-  const res = await fetch(url, {
-    method: "GET",
-    credentials: "include",
+  const res = await apiClient.getRaw(url, {
     signal,
+    headers: {
+      Accept: "text/event-stream",
+    },
   });
 
   if (!res.ok) {
@@ -97,6 +107,7 @@ export async function streamTask(
   const dispatch = (eventType: string, rawData: string) => {
     resetHeartbeat();
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let parsedData: any;
     try {
       parsedData = JSON.parse(rawData);
@@ -132,7 +143,17 @@ export async function streamTask(
         break;
       case StreamEvent.Reasoning:
       case "reasoning":
-        callbacks.onUnknownEvent?.(eventType, parsedData);
+        callbacks.onReasoning?.({
+          type: "reasoning",
+          content:
+            typeof parsedData === "object" &&
+            parsedData !== null &&
+            "content" in parsedData
+              ? String(parsedData.content || "")
+              : typeof parsedData === "string"
+                ? parsedData
+                : "",
+        } as ReasoningEvent);
         break;
       case StreamEvent.Heartbeat:
       case "heartbeat":
@@ -227,6 +248,7 @@ export async function streamEvent(
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    Accept: "text/event-stream",
   };
 
   // Heartbeat tracking
@@ -253,11 +275,8 @@ export async function streamEvent(
     }
   };
 
-  const res = await fetch(url, {
-    method: "POST",
+  const res = await apiClient.postRaw(url, payload, {
     headers,
-    body: JSON.stringify(payload),
-    credentials: "include",
     signal,
   });
 
@@ -277,6 +296,7 @@ export async function streamEvent(
   const dispatch = (eventType: string, rawData: string) => {
     resetHeartbeat();
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let parsedData: any;
     try {
       parsedData = JSON.parse(rawData);
@@ -312,7 +332,17 @@ export async function streamEvent(
         break;
       case StreamEvent.Reasoning:
       case "reasoning":
-        callbacks.onUnknownEvent?.(eventType, parsedData);
+        callbacks.onReasoning?.({
+          type: "reasoning",
+          content:
+            typeof parsedData === "object" &&
+            parsedData !== null &&
+            "content" in parsedData
+              ? String(parsedData.content || "")
+              : typeof parsedData === "string"
+                ? parsedData
+                : "",
+        } as ReasoningEvent);
         break;
       case StreamEvent.Heartbeat:
       case "heartbeat":

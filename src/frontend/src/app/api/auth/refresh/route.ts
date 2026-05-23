@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+import { API_BASE_URL } from '@/core';
 
 function normalizeCookieForFrontendDomain(cookie: string): string {
   return cookie.replace(/;\s*domain=[^;]*/gi, '');

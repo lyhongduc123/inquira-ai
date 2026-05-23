@@ -39,6 +39,8 @@
   --destructive: oklch(0.64 0.18 27);
   --destructive-foreground: oklch(0.99 0.02 95);
 
+  --text-special: oklch(0.4815 0.1178 263.3758); /* Special text color, same as primary for consistency */
+
   --border: oklch(0.91 0.01 260);
   --input: oklch(0.91 0.01 260);
   --ring: oklch(0.4815 0.1178 263.3758);
@@ -111,6 +113,8 @@
 
   --destructive: oklch(0.528 0.12 357.113);
   --destructive-foreground: oklch(0.9097 0.144 95.112);
+
+  --text-special: oklch(0.9097 0.144 95.112);
 
   --border: oklch(0.3072 0.0287 281.7681);
   --input: oklch(0.4815 0.1178 263.3758);
@@ -193,6 +197,7 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-special: var(--text-special);
 
   --font-sans: Inter, ui-sans-serif, sans-serif, system-ui;
   --font-mono:

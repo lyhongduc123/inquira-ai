@@ -1,5 +1,13 @@
 import type { PaperMetadata } from "@/types/paper.type";
-import { extractScopedCitationRefs } from "@/lib/scoped-citation-utils";
+import {
+  createCitationMap as createCitationNumberMap,
+  extractCitedPaperIds as extractCitedIds,
+  getCitedPapers as getCitedSourcePapers,
+} from "@/lib/citation/core";
+import {
+  formatCitationsToApa,
+  buildReferencesSection as buildApaReferencesSection,
+} from "@/lib/citation/render-apa";
 
 /**
  * Extracts all paper IDs that are cited in the message text
@@ -8,34 +16,7 @@ import { extractScopedCitationRefs } from "@/lib/scoped-citation-utils";
  * - [number](paper_id)
  */
 export function extractCitedPaperIds(text: string): string[] {
-  const citedIds = new Set<string>();
-
-  // Extract scoped markers first: (cite:paper_id|chunk_id|...)
-  const scopedRefs = extractScopedCitationRefs(text);
-  for (const ref of scopedRefs) {
-    citedIds.add(ref.paperId);
-  }
-
-  // Extract plain/grouped cite markers:
-  // - (cite:paper_id)
-  // - (cite:paper_id1, cite:paper_id2)
-  // - mixed with scoped tokens
-  const citeMatches = text.matchAll(/cite:([^,\)\s]+)/g);
-  for (const match of citeMatches) {
-    const token = match[1];
-    const paperId = token.split("|")[0]?.trim();
-    if (paperId) {
-      citedIds.add(paperId);
-    }
-  }
-
-  // Extract from [number](paper_id) format
-  const linkMatches = text.matchAll(/\[\d+\]\(([^)]+)\)/g);
-  for (const match of linkMatches) {
-    citedIds.add(match[1]);
-  }
-
-  return Array.from(citedIds);
+  return extractCitedIds(text);
 }
 
 /**
@@ -44,17 +25,31 @@ export function extractCitedPaperIds(text: string): string[] {
  */
 export function getCitedPapers(
   text: string,
-  sources?: PaperMetadata[]
+  sources?: PaperMetadata[],
 ): PaperMetadata[] {
-  if (!sources || sources.length === 0) {
-    return [];
-  }
+  return getCitedSourcePapers(text, sources);
+}
 
-  const citedIds = new Set(extractCitedPaperIds(text));
-  
-  return sources.filter((source) => 
-    source.paperId && citedIds.has(source.paperId)
-  );
+/**
+ * Format original content to APA style citations and build references section
+ */
+export function getFormattedCitedContent(
+  text: string,
+  cited_sources?: PaperMetadata[],
+): string {
+  const body = formatCitationsToApa(text, cited_sources);
+  return buildReferencesSection(body, cited_sources);
+}
+
+/**
+ * Builds the references section for cited papers
+ * Returns a string containing the references section
+ */
+export function buildReferencesSection(
+  text?: string,
+  cited_sources?: PaperMetadata[],
+): string {
+  return buildApaReferencesSection(text, cited_sources);
 }
 
 /**
@@ -63,16 +58,18 @@ export function getCitedPapers(
  */
 export function createCitationMap(
   text: string,
-  sources?: PaperMetadata[]
+  sources?: PaperMetadata[],
 ): Map<string, number> {
-  const citedPapers = getCitedPapers(text, sources);
+  const citedPapers = getCitedSourcePapers(text, sources);
   const map = new Map<string, number>();
-  
+
+  if (!citedPapers.length) {
+    return createCitationNumberMap(sources);
+  }
+
   citedPapers.forEach((paper, index) => {
-    if (paper.paperId) {
-      map.set(paper.paperId, index + 1);
-    }
+    if (paper.paperId) map.set(paper.paperId, index + 1);
   });
-  
+
   return map;
 }

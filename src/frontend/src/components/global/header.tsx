@@ -17,7 +17,7 @@ export function Header({
   rightContent,
 }: HeaderProps) {
   return (
-    <HStack className="items-center justify-between border-b bg-background/95 px-6 py-3 backdrop-blur supports-backdrop-filter:bg-background/60 gap-4">
+    <HStack className="items-center justify-between border-b bg-background/95 px-6 py-3 backdrop-blur supports-backdrop-filter:bg-background/60 gap-4 max-h-[57px]">
       <HStack className="items-center gap-2 shrink-0">
         {children}
         {leftContent}
@@ -28,7 +28,7 @@ export function Header({
         </Box>
       )}
 
-      <HStack className="items-center gap-2 shrink-0 min-w-32">
+      <HStack className="items-center gap-2 shrink-0">
         {rightContent}
       </HStack>
     </HStack>

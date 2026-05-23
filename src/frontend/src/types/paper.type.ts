@@ -1,4 +1,4 @@
-import { AuthorMetadata } from './author.type'
+import { AuthorMetadataDTO } from './author.type'
 
 export interface JournalData {
   title: string
@@ -15,6 +15,17 @@ export interface JournalData {
   dataYear: number
 }
 
+export interface ConferenceData {
+  id?: number
+  coreId?: number
+  title?: string
+  acronym?: string
+  source?: string
+  rank?: string
+  isPrimary?: boolean
+  forCodes?: string
+}
+
 /**
  * PaperMetadata - Lightweight paper metadata for frontend API responses
  * Used for:
@@ -28,20 +39,20 @@ export interface PaperMetadata {
   title: string
   abstract?: string | null
   tldr?: string
-  authors: AuthorMetadata[]
+  authors: AuthorMetadataDTO[]
   year?: number | null
   publicationDate?: string | null
   venue?: string | null
   url?: string | null
   pdfUrl?: string | null
   journal?: JournalData | null
+  conference?: ConferenceData | null
   citationCount: number
   influentialCitationCount?: number
   citationStyles?: Record<string, string> | null
   referenceCount?: number
   relevanceScore?: number | null
   authorTrustScore?: number | null
-  institutionalTrustScore?: number | null
   fwci?: number | null
   isOpenAccess: boolean
   isRetracted: boolean
@@ -58,9 +69,11 @@ export interface PaperDetail {
   paperId: string
   title: string
   abstract: string
-  authors: AuthorMetadata[]
+  authors: AuthorMetadataDTO[]
   journal?: JournalData | null
+  conference?: ConferenceData | null
   publicationDate?: string | null
+  year?: number | null
   venue?: string | null
   issn?: string[] | null
   issnL?: string | null
@@ -77,13 +90,9 @@ export interface PaperDetail {
   citationStyles?: Record<string, string> | null
   topics?: Array<Record<string, unknown>> | null
   keywords?: Array<Record<string, unknown>> | null
-  concepts?: Array<Record<string, unknown>> | null
-  meshTerms?: Array<Record<string, unknown>> | null
   citationPercentile?: Record<string, unknown> | null
   fwci?: number | null
   authorTrustScore?: number | null
-  institutionalTrustScore?: number | null
-  networkDiversityScore?: number | null
   isRetracted: boolean
   language?: string | null
   correspondingAuthorIds?: string[] | null
@@ -95,7 +104,6 @@ export interface PaperDetail {
   createdAt: string
   updatedAt: string
   lastAccessedAt?: string | null
-  sjrData?: JournalData | null
 }
 
 /**

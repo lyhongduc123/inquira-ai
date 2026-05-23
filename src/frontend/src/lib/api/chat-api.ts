@@ -33,8 +33,6 @@ export interface FeedbackResponse {
 }
 
 export const chatApi = {
-  // ==================== V1 DIRECT STREAMING (Standard/Research) ====================
-  
   /**
    * Stream chat message response with citations (Direct POST)
    * Returns SSE stream with conversation, metadata, tokens, and done events
@@ -43,21 +41,19 @@ export const chatApi = {
     return `${CHAT_BASE}/stream`;
   },
 
-  // ==================== V2 EVENT-DRIVEN (Stateful Agent / Tasks) ====================
-
   /**
    * Submit a chat task for background processing
    * Returns immediately with task_id. Use for Agent/Long-running pipelines.
    */
   getSubmitUrl(): string {
-    return `${CHAT_BASE}/submit`;
+    return `${CHAT_BASE}/agent`;
   },
 
   /**
    * Backward-compatible alias for event-driven submit URL.
    */
   getEventDrivenSubmitUrl(): string {
-    return `${CHAT_BASE}/submit`;
+    return `${CHAT_BASE}/agent`;
   },
 
   /**
@@ -86,29 +82,5 @@ export const chatApi = {
    */
   getTaskStatusUrl(taskId: string): string {
     return `${CHAT_BASE}/tasks/${taskId}`;
-  },
-
-  // ==================== COMMON UTILITIES ====================
-
-  /**
-   * Submit feedback for a message
-   */
-  async submitFeedback(
-    messageId: number,
-    request: FeedbackRequest
-  ): Promise<FeedbackResponse> {
-    const response = await fetch(`${CHAT_BASE}/feedback/${messageId}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(request),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to submit feedback: ${response.statusText}`);
-    }
-
-    return response.json();
   },
 };

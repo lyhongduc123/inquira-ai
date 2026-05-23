@@ -1,36 +1,89 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Inquira Frontend
 
-## Getting Started
+Frontend web application for Inquira, an AI research assistant for scholarly search, paper exploration, citation-grounded chat, bookmarks, and author analysis.
 
-First, run the development server:
+This README documents only the frontend application. The backend API, database setup, ingestion, and evaluation workflows are documented in the backend README.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+Backend repository: [backend-inquira](https://github.com/lyhongduc123/backend-inquira)
+
+## Stack
+
+- Next.js 16
+- React 19
+- TypeScript
+- Tailwind CSS
+- Radix UI / shadcn-style components
+- TanStack Query
+- Zustand
+- Recharts
+
+## Project Structure
+
+```powershell
+frontend-inquira/
++-- src/
+|   +-- app/                 #Next.js app routes
+|   +-- components/          #Shared UI, layout, auth
+|   +-- hooks/               #Chat, auth, conversation, citation, and UI hooks
+|   +-- lib/                 #API clients, stream helpers, citation utilities
+|   +-- store/               #Zustand stores
+|   +-- types/               #Shared TypeScript types
+|   +-- core/                #Runtime constants
++-- public/                  #Static assets
++-- package.json
++-- next.config.ts
++-- tsconfig.json
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Install
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+From `frontend-inquira/`:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```powershell
+npm install
+```
 
-## Learn More
+Create a local environment file:
 
-To learn more about Next.js, take a look at the following resources:
+```powershell
+New-Item .env.local -ItemType File
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Minimum local value:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```env
+API_BASE_URL=http://localhost:8000
+```
 
-## Deploy on Vercel
+The backend should be running at the configured `API_BASE_URL`.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Production Build
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Create an optimized production build:
+
+```powershell
+npm run build
+```
+
+Start the production server:
+
+```powershell
+npm run start
+```
+
+The app will be available at:
+
+http://localhost:3000
+
+## Useful Commands
+
+```powershell
+npm run dev       # Start development server
+npm run build     # Create production build
+npm run start     # Start production server
+npm run lint      # Run lint checks
+```
+
+## Notes
+
+Local `.env`, `.env.local`, `.next`, `node_modules`, logs, and generated files are not part of the tracked source.

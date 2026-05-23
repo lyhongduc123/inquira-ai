@@ -15,9 +15,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   LogOut,
-  User as UserIcon,
   Settings,
-  Bookmark,
   ChevronsUpDown,
   Moon,
   Sun,
@@ -27,7 +25,6 @@ import {
 import { useAuthStore } from "@/store/auth-store";
 import { TypographyP } from "@/components/global/typography";
 import { VStack } from "@/components/layout/vstack";
-import { HStack } from "@/components/layout/hstack";
 import { UserSettingsDialog } from "./user-settings-dialog";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
@@ -53,6 +50,7 @@ export function SidebarUserMenu() {
   const handleLogout = async () => {
     try {
       await logout();
+      router.replace("/login");
     } catch (error) {
       console.error("Logout failed:", error);
     }
@@ -106,35 +104,35 @@ export function SidebarUserMenu() {
             <Bookmark className="mr-2 h-4 w-4" />
             <span>Bookmarks</span>
           </DropdownMenuItem> */}
-          <DropdownMenuItem
+          {/* <DropdownMenuItem
             className="focus:bg-accent/10 focus:text-primary dark:focus:text-accent-foreground"
             onClick={() => setSettingsOpen(true)}
           >
             <Settings className="mr-2 h-4 w-4" />
             Settings
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
+          </DropdownMenuItem> */}
+          {/* <DropdownMenuSeparator /> */}
           <DropdownMenuSub>
-            <DropdownMenuSubTrigger className="focus:bg-accent/10 data-[state=open]:bg-accent/10 data-[state=open]:text-primary focus:text-primary dark:focus:text-accent-foreground">
+            <DropdownMenuSubTrigger className="focus:bg-accent/10 data-[state=open]:bg-accent/10 focus:text-primary data-[state=open]:text-primary dark:focus:text-accent-foreground">
               <Monitor className="mr-2 h-4 w-4" />
               Mode
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent>
-              <DropdownMenuItem className="focus:bg-accent/10 focus:text-primary dark:focus:text-accent-foreground" onClick={() => setTheme("light")}>
+              <DropdownMenuItem fixedVariant onClick={() => setTheme("light")}>
                 <Sun className="mr-2 h-4 w-4" />
                 <span>Light</span>
                 {theme === "light" && <span className="ml-auto">
                   <CheckIcon className="h-4 w-4" />
                 </span>}
               </DropdownMenuItem>
-              <DropdownMenuItem className="focus:bg-accent/10 focus:text-primary dark:focus:text-accent-foreground" onClick={() => setTheme("dark")}>
+              <DropdownMenuItem fixedVariant onClick={() => setTheme("dark")}>
                 <Moon className="mr-2 h-4 w-4" />
                 <span>Dark</span>
                 {theme === "dark" && <span className="ml-auto">
                   <CheckIcon className="h-4 w-4" />
                 </span>}
               </DropdownMenuItem>
-              <DropdownMenuItem className="focus:bg-accent/10 focus:text-primary dark:focus:text-accent-foreground" onClick={() => setTheme("system")}>
+              <DropdownMenuItem fixedVariant onClick={() => setTheme("system")}>
                 <Monitor className="mr-2 h-4 w-4" />
                 <span>System</span>
                 {theme === "system" && <span className="ml-auto">

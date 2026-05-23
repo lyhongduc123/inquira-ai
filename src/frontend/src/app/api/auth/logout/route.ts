@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { normalizeCookieForFrontendDomain } from '@/lib/utils';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+import { API_BASE_URL } from '@/core';
 
 /**
  * POST /api/auth/logout - Logout and revoke refresh token from httpOnly cookie

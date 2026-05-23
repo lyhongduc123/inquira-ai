@@ -1,23 +1,24 @@
 import { PaperMetadata } from "./paper.type";
 import { ScopedCitationRef } from "@/lib/scoped-citation-utils";
+import { ProgressEvent } from "@/lib/stream/event.types";
 
 /**
  * Conversation Types - Aligned with Backend Schemas
  * Backend: app/conversations/schemas.py
  */
 
-export interface ConversationCreate {
+export interface ConversationCreateDTO {
   title?: string | null;
   conversationType?: string;
   primaryPaperId?: string | null;
 }
 
-export interface ConversationUpdate {
+export interface ConversationUpdateDTO {
   title?: string | null;
   isArchived?: boolean | null;
 }
 
-export interface Message {
+export interface MessageDTO {
   id: number;
   role: string;
   content: string;
@@ -25,33 +26,33 @@ export interface Message {
   paperSnapshots?: PaperMetadata[] | null;
   progressEvents?: Array<{
     type: string;
-    content: string;
-    metadata?: Record<string, unknown>;
+    content?: string;
+    metadata?: Record<string, any> | null;
+    pipeline_type?: string | null;
     timestamp: number;
   }> | null;
   scopedQuoteRefs?: ScopedCitationRef[] | null;
   createdAt: string;
 }
 
-export interface Conversation {
+export interface ConversationDTO {
   id: string;
   title?: string | null;
-  createdAt?: string;
-  updatedAt: string;
+  lastUpdated?: string;
   messageCount: number;
   isArchived: boolean;
   conversationType: string;
   primaryPaperId?: string | null;
-  messages: Message[];
+  messages: MessageDTO[];
 }
 
-export interface ConversationListResponse {
-  items: Conversation[];
+export interface ConversationListResponseDTO {
+  items: ConversationDTO[];
   total: number;
   page: number;
   page_size: number;
 }
 
-export interface ConversationDelete {
+export interface ConversationDeleteDTO {
   message: string;
 }

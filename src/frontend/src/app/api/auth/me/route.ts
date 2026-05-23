@@ -1,7 +1,6 @@
 import { normalizeCookieForFrontendDomain } from '@/lib/utils/cookie';
 import { NextRequest, NextResponse } from 'next/server';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+import { API_BASE_URL } from '@/core';
 
 /**
  * GET /api/auth/me - Get current user info

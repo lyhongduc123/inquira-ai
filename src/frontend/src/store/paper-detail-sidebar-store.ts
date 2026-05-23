@@ -1,7 +1,7 @@
 import { PaperMetadata } from "@/types/paper.type";
 import { create } from "zustand";
 
-export type SidebarContentType = "paper" | "reference" | null;
+export type SidebarContentType = "paper" | null;
 export type SidebarContent = PaperMetadata | null;
 
 interface DetailSidebarState {
@@ -20,8 +20,18 @@ export const useDetailSidebarStore = create<DetailSidebarState>((set) => ({
   isOpen: false,
   contentType: null,
   content: null,
-  open: (contentType, content) => set({ isOpen: true, contentType, content }),
-  close: () => set({ isOpen: false, contentType: null, content: null }),
+  open: (contentType, content) =>
+    set({
+      isOpen: true,
+      contentType,
+      content,
+    }),
+  close: () =>
+    set({
+      isOpen: false,
+      contentType: null,
+      content: null,
+    }),
 }));
 
 export const usePaperDetailSidebarStore = useDetailSidebarStore;

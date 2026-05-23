@@ -1,5 +1,5 @@
 import { useRef, useCallback } from "react";
-import { MessageAreaRef } from "@/app/_components/MessageArea";
+import { MessageAreaRef } from "@/app/(main)/_components/MessageArea";
 import { useQueryNavigatorStore } from "@/store/query-navigator-store";
 
 export function useViewMode() {

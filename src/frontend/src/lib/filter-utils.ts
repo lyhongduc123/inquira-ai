@@ -2,36 +2,38 @@
  * Utility functions for transforming search filters between frontend and backend formats
  */
 
-import { SearchFilters } from "@/app/_components/FilterPanel";
+import { SearchFilters } from "@/app/(main)/_components/FilterPanel";
+import { ChatSubmitFilters } from "@/types/task.type";
 
 /**
- * Transform frontend filter format to backend expected format
- * 
- * Frontend uses camelCase and nested objects (yearRange)
- * Backend expects snake_case and flat structure (year_min, year_max)
+ * Remove empty values while preserving the chat submit filter shape.
  */
-export function transformFiltersForBackend(filters?: SearchFilters): Record<string, unknown> | undefined {
+export function transformFiltersForBackend(
+  filters?: SearchFilters,
+): ChatSubmitFilters | undefined {
   if (!filters) return undefined;
 
-  const transformed: Record<string, unknown> = {};
+  const transformed: ChatSubmitFilters = {};
 
-  // Transform yearRange to yearMin/yearMax
-  if (filters.yearRange) {
-    if (filters.yearRange.min !== undefined) {
-      transformed.yearMin = filters.yearRange.min;
-    }
-    if (filters.yearRange.max !== undefined) {
-      transformed.yearMax = filters.yearRange.max;
-    }
-  }
-
-  // Direct mappings for camelCase fields
-  if (filters.author) transformed.author = filters.author;
-  if (filters.year_min !== undefined) transformed.yearMin = filters.year_min;
-  if (filters.year_max !== undefined) transformed.yearMax = filters.year_max;
+  if (filters.authorName) transformed.authorName = filters.authorName;
+  if (filters.yearMin !== undefined) transformed.yearMin = filters.yearMin;
+  if (filters.yearMax !== undefined) transformed.yearMax = filters.yearMax;
   if (filters.venue) transformed.venue = filters.venue;
-  if (filters.min_citations !== undefined) transformed.minCitations = filters.min_citations;
-  if (filters.max_citations !== undefined) transformed.maxCitations = filters.max_citations;
+  if (filters.minCitationCount !== undefined) {
+    transformed.minCitationCount = filters.minCitationCount;
+  }
+  if (filters.maxCitationCount !== undefined) {
+    transformed.maxCitationCount = filters.maxCitationCount;
+  }
+  if (filters.journalQuartile) {
+    transformed.journalQuartile = filters.journalQuartile;
+  }
+  if (filters.fieldOfStudy && filters.fieldOfStudy.length > 0) {
+    transformed.fieldOfStudy = filters.fieldOfStudy;
+  }
+  if (filters.paperIds && filters.paperIds.length > 0) {
+    transformed.paperIds = filters.paperIds;
+  }
 
   return Object.keys(transformed).length > 0 ? transformed : undefined;
 }
@@ -43,14 +45,14 @@ export function hasActiveFilters(filters?: SearchFilters): boolean {
   if (!filters) return false;
 
   return (
-    Boolean(filters.author) ||
+    Boolean(filters.authorName) ||
     Boolean(filters.venue) ||
-    (filters.yearRange?.min !== undefined || filters.yearRange?.max !== undefined) ||
-    (filters.year_min !== undefined || filters.year_max !== undefined) ||
-    (filters.min_citations !== undefined || filters.max_citations !== undefined) ||
-    (filters.category && filters.category.length > 0) ||
-    filters.openAccessOnly === true ||
-    filters.excludePreprints === true ||
-    filters.topJournalsOnly === true
+    filters.yearMin !== undefined ||
+    filters.yearMax !== undefined ||
+    filters.minCitationCount !== undefined ||
+    filters.maxCitationCount !== undefined ||
+    Boolean(filters.fieldOfStudy && filters.fieldOfStudy.length > 0) ||
+    Boolean(filters.paperIds && filters.paperIds.length > 0) ||
+    Boolean(filters.journalQuartile)
   );
 }

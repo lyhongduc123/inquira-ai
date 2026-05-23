@@ -67,7 +67,7 @@ export function LoginPageClient() {
 
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
-      router.push(redirectTo);
+      router.replace(redirectTo);
     }
   }, [isAuthenticated, isLoading, router, redirectTo]);
 
@@ -164,6 +164,8 @@ export function LoginPageClient() {
     setStep("email");
     clearMessages();
   };
+
+  // console.log("LoginPageClient rendered with isAuthenticated:", isAuthenticated, "isLoading:", isLoading);
 
   if (isLoading) {
     return (

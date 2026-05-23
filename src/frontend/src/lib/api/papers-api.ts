@@ -7,8 +7,7 @@ import type {
   PaperUpdateRequest,
 } from "@/types/paper.type";
 import { type PaginatedData, type DeleteResponse, HttpStatus, ApiError } from "@/types/api.type";
-import { Conversation } from "@/types/conversation.type";
-
+import { ConversationDTO } from "@/types/conversation.type";
 
 const PAPERS_BASE = "/api/v1/papers";
 
@@ -142,7 +141,7 @@ export const papersApi = {
     paperId: string;
     page?: number;
     page_size?: number;
-  }): Promise<PaginatedData<Conversation>> {
+  }): Promise<PaginatedData<ConversationDTO>> {
     const { paperId, page = 1, page_size = 20 } = params;
 
     const queryParams = new URLSearchParams({
@@ -150,7 +149,7 @@ export const papersApi = {
       page_size: page_size.toString(),
     });
 
-    return await apiClient.get<PaginatedData<Conversation>>(
+    return await apiClient.get<PaginatedData<ConversationDTO>>(
       `${PAPERS_BASE}/${paperId}/conversations?${queryParams}`
     );
   },

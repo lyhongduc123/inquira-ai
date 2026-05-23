@@ -2,12 +2,9 @@ import { create } from "zustand";
 import { ProgressEvent } from "@/lib/stream/event.types";
 import { EventType } from "@/lib/stream/event.types";
 
-export interface ProgressStep {
-  type: string;
-  content?: string; // Optional: only for reasoning
-  metadata?: Record<string, unknown>;
+export type ProgressStep = ProgressEvent & {
   timestamp: number;
-}
+};
 
 export interface QueryProgress {
   queryId: string;
@@ -40,8 +37,11 @@ interface ProgressState {
 }
 
 const phaseMap: Record<string, { phase: string; progress: number }> = {
+  [EventType.THINKING]: { phase: "thinking", progress: 12 },
   [EventType.SEARCHING]: { phase: "search", progress: 25 },
-  [EventType.RANKING]: { phase: "analysis", progress: 50 },
+  [EventType.SEARCHING_EXTERNAL]: { phase: "searching_external", progress: 45 },
+  [EventType.INGESTING_PAPER]: { phase: "ingest", progress: 60 },
+  [EventType.RANKING]: { phase: "ranking", progress: 50 },
   [EventType.REASONING]: { phase: "generation", progress: 75 },
 };
 
@@ -97,46 +97,47 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
     set((state) => {
       const queryProgress = state.queries.get(queryId);
       if (!queryProgress) return state;
-      
       const phaseInfo = phaseMap[event.type] || { phase: "processing", progress: 0 };
-      
+
       const updatedSteps = [...queryProgress.steps];
       const lastStep = updatedSteps[updatedSteps.length - 1];
-      
+
+      // Merge reasoning content to last reasoning step to avoid creating many tiny steps
       if (event.type === EventType.REASONING && lastStep?.type === EventType.REASONING) {
         updatedSteps[updatedSteps.length - 1] = {
           ...lastStep,
-          content: (lastStep.content || "") + (event.content || ""),
+          content: String((lastStep.content || "") + (event.content || "")),
           timestamp: Date.now(),
+          pipeline_type: event.pipeline_type ?? event.pipelineType ?? lastStep.pipeline_type,
         };
       } else {
+        // New step -> client increments step count
         updatedSteps.push({
-          type: event.type,
-          content: event.content, // May be undefined for searching/ranking
-          metadata: event.metadata,
+          ...event,
           timestamp: Date.now(),
         });
       }
-      
+
+      const isNewStep = !(event.type === EventType.REASONING && lastStep?.type === EventType.REASONING);
+
       const updatedProgress: QueryProgress = {
         ...queryProgress,
         currentPhase: phaseInfo.phase,
         phaseMessage: phaseInfo.phase,
-        progress: phaseInfo.progress,
-        currentStep:
-          typeof event.metadata?.current_step === "number"
-            ? event.metadata.current_step
-            : queryProgress.currentStep,
-        totalSteps:
-          typeof event.metadata?.total_steps === "number"
-            ? event.metadata.total_steps
-            : queryProgress.totalSteps,
+        progress:
+          typeof event.progress_percent === "number"
+            ? event.progress_percent
+            : typeof event.progressPercent === "number"
+              ? event.progressPercent
+              : phaseInfo.progress,
+        currentStep: isNewStep ? queryProgress.currentStep + 1 : queryProgress.currentStep,
+        totalSteps: queryProgress.totalSteps,
         steps: updatedSteps,
       };
-      
+
       const newQueries = new Map(state.queries);
       newQueries.set(queryId, updatedProgress);
-      
+
       return { queries: newQueries };
     });
   },
