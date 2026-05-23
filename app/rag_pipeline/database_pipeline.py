@@ -14,22 +14,19 @@ Features:
 - Chunk-level search within filtered papers
 """
 
-import asyncio
-from datetime import datetime
 from typing import AsyncGenerator, List, Optional, Dict, Any, Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.llm import get_llm_service
 from app.core.container import ServiceContainer
-from app.domain.papers import LoadOptions
-from app.domain.chunks.schemas import ChunkRetrieved
+from app.domain.papers.repository import LoadOptions
+from app.domain.chunks.types import ChunkRetrieved
 from app.core.singletons import get_ranking_service
 from app.models.papers import DBPaper
-from app.processor.schemas import RankedPaper
+from app.search.types import RankedPaper
 from app.llm.schemas import QueryIntent
 
-from app.processor.services.embeddings import get_embedding_service
 from app.rag_pipeline.schemas import (
     RAGPipelineContext,
     RAGPipelineEvent,
@@ -39,21 +36,13 @@ from app.rag_pipeline.schemas import (
 )
 from app.extensions.logger import create_logger
 from app.rag_pipeline.data_collector import get_data_collector
+from app.search import (
+    append_missing_abstract_chunks,
+    parse_search_filter_options,
+    reciprocal_rank_fusion,
+)
 
 logger = create_logger(__name__)
-
-
-def _get_filter_value(filters: Optional[Dict[str, Any]], snake_key: str) -> Any:
-    """Read filter value from either snake_case or camelCase key."""
-    if not filters:
-        return None
-
-    if snake_key in filters:
-        return filters.get(snake_key)
-
-    parts = snake_key.split("_")
-    camel_key = parts[0] + "".join(part.capitalize() for part in parts[1:])
-    return filters.get(camel_key)
 
 
 class DatabasePipeline:
@@ -80,6 +69,7 @@ class DatabasePipeline:
 
         # Core services from container
         self.repository = self.container.paper_repository
+        self.paper_service = self.container.paper_service
         self.chunk_service = self.container.chunk_service
         self.ranking_service = self.container.ranking_service
 
@@ -116,8 +106,7 @@ class DatabasePipeline:
 
         ctx = RAGPipelineContext(
             query=config.query,
-            search_queries=([config.bm25_query] if config.bm25_query else [])
-            + (config.semantic_queries or []),
+            search_queries=config.search_queries or [config.query],
         )
 
         intent = QueryIntent.COMPREHENSIVE_SEARCH
@@ -144,26 +133,20 @@ class DatabasePipeline:
             },
         )
 
-        yield RAGPipelineEvent(
-            type=RAGEventType.PROCESSING,
-            data={"message": "Finding relevance papers and documents..."},
-        )
+        # yield RAGPipelineEvent(
+        #     type=RAGEventType.PROCESSING,
+        #     data={"message": "Finding relevance papers and documents..."},
+        # )
 
         paper_rankings: List[List[tuple[DBPaper, float]]] = []
-
-        # IMPORTANT: run sequentially because all repository calls share one AsyncSession.
-        # Concurrent DB operations on the same session can leave the transaction in
-        # a failed state and cascade errors across subsequent queries.
-        if config.bm25_query:
-            bm25_results = await self._run_bm25_search(config.bm25_query, config.filters)
-            if bm25_results:
-                paper_rankings.append(bm25_results)
-
-        if config.semantic_queries:
-            for sem_query in config.semantic_queries:
-                semantic_results = await self._run_semantic_search(sem_query, config.filters)
-                if semantic_results:
-                    paper_rankings.append(semantic_results)
+        for search_query in (ctx.search_queries or [config.query]):
+            hybrid_results = await self._run_hybrid_search(
+                search_query,
+                config.filters,
+                intent=intent,
+            )
+            if hybrid_results:
+                paper_rankings.append(hybrid_results)
 
         db_papers_with_scores = self._fuse_rankings_with_rrf(
             paper_rankings=paper_rankings,
@@ -203,41 +186,22 @@ class DatabasePipeline:
                 intent=intent,
             )
 
-            papers_with_chunks = {chunk.paper_id for chunk in chunks}
-            papers_without_chunks = [
-                (paper, score)
-                for paper, score in db_papers_with_scores
-                if paper.paper_id not in papers_with_chunks and paper.abstract
-            ]
+            chunks_before_abstracts = len(chunks)
+            append_missing_abstract_chunks(
+                chunks,
+                db_papers_with_scores,
+                score_multiplier=0.8,
+            )
+            abstract_count = len(chunks) - chunks_before_abstracts
 
-            if papers_without_chunks:
+            if abstract_count:
                 logger.info(
-                    f"Creating {len(papers_without_chunks)} virtual abstract chunks for papers without chunks"
+                    f"Creating {abstract_count} virtual abstract chunks for papers without chunks"
                 )
-                for paper, score in papers_without_chunks:
-                    virtual_chunk = ChunkRetrieved(
-                        chunk_id=f"{paper.paper_id}_abstract",
-                        paper_id=paper.paper_id,
-                        text=paper.abstract,
-                        token_count=len(paper.abstract.split()),
-                        chunk_index=0,
-                        section_title="Abstract",  # Tag with 'Abstract' for LLM context
-                        page_number=None,
-                        label="abstract",
-                        level=0,
-                        id=paper.id,
-                        char_start=None,
-                        char_end=None,
-                        docling_metadata=None,
-                        embedding=None,
-                        created_at=datetime.now(),
-                        relevance_score=score * 0.8,
-                    )
-                    chunks.append(virtual_chunk)
 
             ctx.chunks = chunks
             logger.info(
-                f"Found {len(chunks)} total chunks ({len(chunks) - len(papers_without_chunks)} real + {len(papers_without_chunks)} abstract)"
+                f"Found {len(chunks)} total chunks ({chunks_before_abstracts} real + {abstract_count} abstract)"
             )
             self.data_collector.record_chunks(chunks)
 
@@ -330,22 +294,10 @@ class DatabasePipeline:
     ) -> List[tuple[DBPaper, float]]:
         """Run BM25 search in database with optional filters."""
         try:
-            author_name = _get_filter_value(filters, "author")
-            year_min = _get_filter_value(filters, "year_min")
-            year_max = _get_filter_value(filters, "year_max")
-            venue = _get_filter_value(filters, "venue")
-            min_citations = _get_filter_value(filters, "min_citations")
-            max_citations = _get_filter_value(filters, "max_citations")
-
-            results = await self.repository.bm25_search_papers_with_filters(
+            results = await self.paper_service.bm25_search(
                 query=query,
                 limit=100,
-                author_name=author_name,
-                year_min=year_min,
-                year_max=year_max,
-                venue=venue,
-                min_citation_count=min_citations,
-                max_citation_count=max_citations,
+                filter_options=parse_search_filter_options(filters),
             )
             logger.debug(
                 f"BM25 search for query '{query[:50]}...' returned {len(results)} papers"
@@ -361,32 +313,11 @@ class DatabasePipeline:
     ) -> List[tuple[DBPaper, float]]:
         """Run semantic search in database with optional filters."""
         try:
-            embedding_service = get_embedding_service()
-            query_embedding = await embedding_service.create_embedding(
-                query, task="search_query"
-            )
-            if not query_embedding:
-                logger.warning("Embedding generation failed for semantic search")
-                return []
-
-            author_name = _get_filter_value(filters, "author")
-            year_min = _get_filter_value(filters, "year_min")
-            year_max = _get_filter_value(filters, "year_max")
-            venue = _get_filter_value(filters, "venue")
-            min_citations = _get_filter_value(filters, "min_citations")
-            max_citations = _get_filter_value(filters, "max_citations")
-
-            results = await self.repository.semantic_search_papers_with_filters(
-                query_embedding=query_embedding,
+            results = await self.paper_service.semantic_search(
+                query=query,
                 limit=100,
-                author_name=author_name,
-                year_min=year_min,
-                year_max=year_max,
-                venue=venue,
-                min_citation_count=min_citations,
-                max_citation_count=max_citations,
+                filter_options=parse_search_filter_options(filters),
             )
-            del query_embedding
             logger.debug(
                 f"Semantic search for query '{query[:50]}...' returned {len(results)} papers"
             )
@@ -395,6 +326,34 @@ class DatabasePipeline:
             logger.error(f"Semantic search failed: {e}")
             await self.db_session.rollback()
             return []
+        
+    async def _run_hybrid_search(
+        self,
+        query: str,
+        filters: Optional[Dict[str, Any]] = None,
+        intent: Optional[QueryIntent] = None,
+    ) -> List[tuple[DBPaper, float]]:
+        try:
+            results = await self.paper_service.hybrid_search(
+                query=query,
+                limit=100,
+                filter_options=parse_search_filter_options(filters),
+            )
+            return results
+        except Exception as e:
+            logger.error(f"Hybrid search failed: {e}")
+            return []
+
+
+    def _get_hybrid_score_weight(self, intent: Optional[QueryIntent] = None) -> float:
+        if intent == QueryIntent.FOUNDATIONAL:
+            return 0.3
+        if intent == QueryIntent.COMPARISON:
+            return 0.35
+        if intent == QueryIntent.AUTHOR_PAPERS:
+            return 0.15
+        return 0.25
+
 
     def _fuse_rankings_with_rrf(
         self,
@@ -403,20 +362,12 @@ class DatabasePipeline:
         limit: int = 100,
     ) -> List[tuple[DBPaper, float]]:
         """Fuse multiple ranked lists with Reciprocal Rank Fusion (RRF)."""
-        rrf_scores: Dict[str, float] = {}
-        paper_map: Dict[str, DBPaper] = {}
-
-        for ranking in paper_rankings:
-            for rank, (paper, _) in enumerate(ranking, start=1):
-                pid = paper.paper_id
-                rrf_scores[pid] = rrf_scores.get(pid, 0.0) + (1.0 / (k + rank))
-                if pid not in paper_map:
-                    paper_map[pid] = paper
-
-        ranked_ids = sorted(
-            rrf_scores.keys(), key=lambda pid: rrf_scores[pid], reverse=True
-        )[:limit]
-        return [(paper_map[pid], rrf_scores[pid]) for pid in ranked_ids]
+        return reciprocal_rank_fusion(
+            paper_rankings,
+            key=lambda paper: paper.paper_id,
+            k=k,
+            limit=limit,
+        )
 
     async def _chunk_search(
         self,
@@ -468,6 +419,18 @@ class DatabasePipeline:
                 chunks=chunks,
                 weights=weights,
             )
+
+            hybrid_weight = self._get_hybrid_score_weight(intent)
+            if hybrid_weight > 0:
+                for ranked_paper in ranked_papers:
+                    hybrid_score = paper_hybrid_scores.get(ranked_paper.paper_id, 0.0)
+                    ranked_paper.relevance_score = (
+                        ranked_paper.relevance_score * (1 - hybrid_weight)
+                    ) + (hybrid_score * hybrid_weight * 100)
+                    ranked_paper.ranking_scores["hybrid_score"] = hybrid_score
+
+                ranked_papers.sort(key=lambda r: r.relevance_score, reverse=True)
+
             return ranked_papers
         except Exception as e:
             logger.error(f"Paper ranking failed: {e}")

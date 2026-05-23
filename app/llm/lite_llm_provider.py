@@ -7,6 +7,7 @@ from litellm.exceptions import (
     APIError,
     Timeout,
     ServiceUnavailableError,
+    InternalServerError,
 )
 from app.core.config import settings
 
@@ -22,6 +23,7 @@ logger = create_logger(__name__)
 class CompletionParams(TypedDict, total=False):
     model: str
     timeout: Optional[Union[float, str, "httpx.Timeout"]]
+    response_format: Optional[Union[dict, Type[BaseModel]]]
     temperature: Optional[float]
     top_p: Optional[float]
     n: Optional[int]
@@ -99,7 +101,7 @@ class LiteLLMProvider:
 
                 return response
 
-            except (RateLimitError, APIError, Timeout, ServiceUnavailableError) as e:
+            except (RateLimitError, APIError, Timeout, ServiceUnavailableError, InternalServerError, NotFoundError) as e:
                 logger.error(
                     f"Error with provider {provider['model']}: {e}. Switching..."
                 )
@@ -145,9 +147,9 @@ class LiteLLMProvider:
                 ):
                     yield chunk
 
-                return  # ✅ success → stop here
+                return 
 
-            except (RateLimitError, APIError, Timeout, ServiceUnavailableError) as e:
+            except (RateLimitError, APIError, Timeout, ServiceUnavailableError, InternalServerError, NotFoundError) as e:
                 logger.error(
                     f"Error with provider {provider['model']}: {e}. Switching..."
                 )

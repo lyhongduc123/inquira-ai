@@ -1,18 +1,15 @@
-import time
-from fastapi import Depends, FastAPI, Request, Response
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from contextlib import asynccontextmanager
 from datetime import datetime
 
-from app.auth.dependencies import get_current_user, get_fake_user
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import colorama
 colorama.just_fix_windows_console()
 
-from app.db.database import get_db_session, init_db
-from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.db.database import get_db_session, init_db
 
 # For initializing database models
 import app.models
@@ -20,6 +17,7 @@ import app.models
 # Import routers from domain modules
 from app.domain.chat.router import router as chat_router
 from app.domain.conversations.router import router as conversations_router
+from app.domain.messages.router import router as messages_router
 from app.domain.authors.router import router as authors_router
 from app.domain.papers.router import router as papers_router
 from app.domain.institutions.router import router as institutions_router
@@ -27,10 +25,9 @@ from app.domain.institutions.router import router as institutions_router
 # Import routers from other modules
 from app.auth import router as auth_router
 from app.processor.router import router as preprocessing_router
-from app.validation import router as validation_router
+from app.domain.validation import router as validation_router
 from app.domain.bookmarks import router as bookmarks_router
-from app.user_settings import router as user_settings_router
-from app.benchmarking import benchmark_router
+from app.domain.user_settings import router as user_settings_router
 from app.rag_pipeline.router import router as rag_pipeline_router
 
 # Import core components for error handling
@@ -38,6 +35,8 @@ from app.core.exceptions import BaseApiException
 from app.core.responses import error_response, ErrorCode
 from app.extensions.middleware import RequestIDMiddleware
 from app.extensions.logger import create_logger
+
+from app.core.config import settings
 
 logger = create_logger(__name__)
 
@@ -58,9 +57,9 @@ async def lifespan(app: FastAPI):
     logger.info("Background task queue stopped")
 
 app = FastAPI(
-    title="Exegent API",
+    title=f"{settings.APP_NAME} API",
     description="AI-powered chatbot and research assistant",
-    version="1.0.0",
+    version=settings.APP_VERSION,
     lifespan=lifespan,
 )
 
@@ -81,8 +80,6 @@ async def add_response_headers(request: Request, call_next):
     
     return response
 
-# CORS middleware for frontend
-from app.core.config import settings
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.FRONTEND_URL], 
@@ -153,7 +150,7 @@ async def generic_exception_handler(request: Request, exc: Exception) -> JSONRes
 # Health check routes
 @app.get("/")
 def read_root():
-    return {"message": "Hello from Exegent!", "version": "1.0.0"}
+    return {"message": f"Hello from {settings.APP_NAME}!", "version": settings.APP_VERSION}
 
 @app.get("/health")
 def health_check():
@@ -176,6 +173,11 @@ app.include_router(
     conversations_router, 
     prefix="/api/v1/conversations", 
     tags=["conversations"]
+)
+app.include_router(
+    messages_router,
+    prefix="/api/v1/messages",
+    tags=["messages"],
 )
 app.include_router(
     papers_router,
@@ -211,10 +213,6 @@ app.include_router(
     user_settings_router,
     prefix="/api/v1/user/settings",
     tags=["user", "settings"]
-)
-app.include_router(
-    benchmark_router,
-    tags=["admin", "benchmarking"]
 )
 app.include_router(
     rag_pipeline_router,

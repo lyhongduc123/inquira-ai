@@ -1,10 +1,11 @@
 """
 Simple in-memory task queue for background processing.
-Uses asyncio for concurrent task execution without external dependencies.
+Uses asyncio workers by default and a thread pool for blocking-prone jobs.
 """
 
 import asyncio
-from typing import Callable, Any, Dict, Optional
+from concurrent.futures import ThreadPoolExecutor
+from typing import Awaitable, Callable, Any, Dict, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -64,11 +65,15 @@ class TaskQueue:
         self.tasks: Dict[str, BackgroundTask] = {}
         self.queue: asyncio.Queue = asyncio.Queue()
         self.workers: list[asyncio.Task] = []
+        self.thread_pool = ThreadPoolExecutor(
+            max_workers=max_workers,
+            thread_name_prefix="background-task",
+        )
         self._running = False
         self._task_counter = 0
     
     async def start(self):
-        """Start worker threads"""
+        """Start asyncio workers"""
         if self._running:
             return
         
@@ -91,6 +96,7 @@ class TaskQueue:
             worker.cancel()
         
         await asyncio.gather(*self.workers, return_exceptions=True)
+        self.thread_pool.shutdown(wait=False, cancel_futures=False)
         logger.info("Stopped all background workers")
     
     async def submit(
@@ -128,52 +134,40 @@ class TaskQueue:
         
         logger.info(f"Submitted task {task_id} ({task_type})")
         return task_id
-    
-    async def submit_chat_task(
+
+    async def submit_threaded_coroutine(
         self,
-        task_id: str,
-        user_id: int,
-        conversation_id: str,
-        query: str,
-        pipeline_type: str,
-        filters: Dict[str, Any]
+        background_task_id: str,
+        task_type: str,
+        func: Callable[..., Awaitable[Any]],
+        *args,
+        **kwargs,
     ) -> None:
         """
-        Submit a chat pipeline task for background execution.
-        
-        This is a high-level method that wraps the chat execution logic.
-        The task will be executed asynchronously and events will be saved to database.
-        
-        Args:
-            task_id: Pre-generated task ID from pipeline_task_service
-            user_id: User who initiated the chat
-            conversation_id: Conversation this belongs to
-            query: User's question
-            pipeline_type: Pipeline to use (database, hybrid, standard)
-            filters: Optional search filters
+        Run an async task in a dedicated thread with its own event loop.
+
+        Use this for async functions that call blocking libraries internally.
+        It prevents those blocking calls from monopolizing FastAPI's request
+        event loop while preserving the existing in-memory task tracking.
         """
-        # Import here to avoid circular dependency
-        from app.domain.chat.executor import execute_chat_pipeline
-        
-        # Submit task using the pre-generated task_id
         task = BackgroundTask(
-            task_id=task_id,
-            task_type="chat_pipeline",
-            func=execute_chat_pipeline,
-            kwargs={
-                "task_id": task_id,
-                "user_id": user_id,
-                "conversation_id": conversation_id,
-                "query": query,
-                "pipeline_type": pipeline_type,
-                "filters": filters
-            }
+            task_id=background_task_id,
+            task_type=task_type,
+            func=func,
+            args=args,
+            kwargs=kwargs,
         )
-        
-        self.tasks[task_id] = task
-        await self.queue.put(task)
-        
-        logger.info(f"Submitted chat pipeline task {task_id} for user {user_id}")
+
+        self.tasks[background_task_id] = task
+
+        loop = asyncio.get_running_loop()
+        loop.run_in_executor(
+            self.thread_pool,
+            self._run_coroutine_task_in_thread,
+            task,
+        )
+
+        logger.info(f"Submitted threaded task {background_task_id} ({task_type})")
     
     async def get_status(self, task_id: str) -> Optional[Dict[str, Any]]:
         """Get task status"""
@@ -190,6 +184,31 @@ class TaskQueue:
             "completed_at": task.completed_at.isoformat() if task.completed_at else None,
             "error": task.error
         }
+
+    @staticmethod
+    def _run_coroutine_task_in_thread(task: BackgroundTask) -> None:
+        task.status = TaskStatus.RUNNING
+        task.started_at = datetime.now()
+
+        try:
+            logger.info(f"Thread worker executing {task.task_id}")
+            task.result = asyncio.run(task.func(*task.args, **task.kwargs))
+            task.status = TaskStatus.COMPLETED
+            task.completed_at = datetime.now()
+
+            duration = (task.completed_at - task.started_at).total_seconds()
+            logger.info(
+                f"Thread worker completed {task.task_id} "
+                f"in {duration:.2f}s"
+            )
+        except Exception as e:
+            task.status = TaskStatus.FAILED
+            task.error = str(e)
+            task.completed_at = datetime.now()
+            logger.error(
+                f"Thread worker failed {task.task_id}: {e}",
+                exc_info=True,
+            )
     
     async def _worker(self, worker_id: int):
         """Worker coroutine that processes tasks from queue"""

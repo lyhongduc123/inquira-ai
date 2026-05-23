@@ -13,7 +13,7 @@ from typing import (
 from enum import Enum
 from litellm import dataclass
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.domain.chunks.schemas import ChunkRetrieved
+from app.domain.chunks.types import ChunkRetrieved
 from app.extensions.logger import create_logger
 from app.core.config import settings
 from app.retriever.provider import (
@@ -24,12 +24,14 @@ from app.retriever.provider import (
 )
 from app.retriever.schemas import NormalizedPaperResult
 from app.processor.services.embeddings import EmbeddingService, get_embedding_service
-from app.domain.chunks import ChunkService, ChunkRepository
-from app.core.dtos.paper import PaperEnrichedDTO
+from app.domain.chunks.repository import ChunkRepository
+from app.domain.chunks.service import ChunkService
+from app.domain.papers.types import PaperEnrichedDTO
 from app.utils.transformers import batch_normalized_to_papers
+from app.utils.identifier_normalization import normalize_external_ids
 from app.utils.string import surname
 
-from .retriever import PaperRetriever
+from .external_retriever import ExternalPaperRetriever
 from .result_logger import save_retrieval_results
 from .schemas.openalex import OAAuthorResponse
 
@@ -66,7 +68,7 @@ class RetrievalService:
     def __init__(
         self,
         db: AsyncSession,
-        paper_retriever: Optional[PaperRetriever] = None,
+        paper_retriever: Optional[ExternalPaperRetriever] = None,
         embedding_service: Optional[EmbeddingService] = None,
         chunk_service: Optional[ChunkService] = None,
         config: Optional[RetrievalConfig] = None,
@@ -81,7 +83,7 @@ class RetrievalService:
             chunk_service: Optional chunk service (uses repository internally)
             config: Optional retrieval configuration
         """
-        self.paper_retriever = paper_retriever or PaperRetriever()
+        self.paper_retriever = paper_retriever or ExternalPaperRetriever()
         self.embedding_service = embedding_service or get_embedding_service()
         if chunk_service:
             self.chunk_service = chunk_service
@@ -140,11 +142,11 @@ class RetrievalService:
                 logger.error(f"Error retrieving papers from {service_type}: {e}")
 
         # Optionally save raw results for analysis
-        if save_results and results:
-            try:
-                save_retrieval_results(results, query=query, provider=str(services))
-            except Exception as e:
-                logger.warning(f"Failed to save retrieval results: {e}")
+        # if save_results and results:
+        #     try:
+        #         save_retrieval_results(results, query=query, provider=str(services))
+        #     except Exception as e:
+        #         logger.warning(f"Failed to save retrieval results: {e}")
 
         papers = batch_normalized_to_papers(results)
         return papers
@@ -152,8 +154,7 @@ class RetrievalService:
     async def hybrid_search(
         self,
         query: str,
-        semantic_limit: int = 50,
-        final_limit: int = 100,
+        s2_limit: int = 50,
         filters: Optional[Dict[str, Any]] = None,
         enable_enrichment: bool = True,
     ) -> Tuple[List[PaperEnrichedDTO], Dict[str, Any]]:
@@ -161,18 +162,15 @@ class RetrievalService:
         Hybrid search combining Semantic Scholar semantic search with OpenAlex metadata enrichment.
 
         Workflow:
-        1. Semantic Scholar semantic search (better query understanding)
+        1. Semantic Scholar semantic search
         2. Extract DOIs/OpenAlex IDs from results
         3. Batch fetch OpenAlex metadata to enrich papers (FWCI, institutions, topics)
-        4. Optional: OpenAlex keyword search for additional results
         5. Merge and deduplicate by DOI
         6. Return combined results with comprehensive metadata
 
         Args:
             query: Search query
-            semantic_limit: Max results from Semantic Scholar (default 100)
-            openalex_limit: Max additional results from OpenAlex keyword search (default 50)
-            final_limit: Max final results to return (default 100)
+            s2_limit: Max results from Semantic Scholar (default 100)
             filters: Optional filters (year_min, year_max, fields)
             enable_enrichment: Whether to enrich with OpenAlex metadata
 
@@ -181,17 +179,18 @@ class RetrievalService:
             - papers: List of Paper objects with enriched metadata
             - metadata: Search metadata (counts, sources, etc.)
         """
-        logger.info(f"[HybridSearch] Starting hybrid search for: {query[:50]}...")
-        semantic_provider = self.providers.get(RetrievalServiceType.SEMANTIC)
+        logger.info(f"[HybridSearch] Starting hybrid search for: {query}...")
+        semantic_provider = self.get_provider_as(
+            RetrievalServiceType.SEMANTIC, SemanticScholarProvider)
         semantic_results = []
 
         if semantic_provider:
             try:
                 logger.info(
-                    f"[HybridSearch] Fetching {semantic_limit} papers from Semantic Scholar..."
+                    f"[HybridSearch] Fetching {s2_limit} papers from Semantic Scholar..."
                 )
                 raw_semantic = await semantic_provider.search_papers(
-                    query, limit=semantic_limit, filters=filters
+                    query, limit=s2_limit, filters=filters
                 )
                 semantic_results = [
                     semantic_provider.normalize_result(r) for r in raw_semantic
@@ -221,6 +220,69 @@ class RetrievalService:
         }
         return papers, metadata
 
+    async def reverse_hybrid_search(
+        self,
+        query: str,
+        openalex_limit: int = 50,
+        filters: Optional[Dict[str, Any]] = None,
+        enable_enrichment: bool = True,
+    ) -> Tuple[List[PaperEnrichedDTO], Dict[str, Any]]:
+        """
+        Hybrid search using OpenAlex as the retrieval source and Semantic Scholar for enrichment.
+
+        Workflow:
+        1. Search OpenAlex works
+        2. Extract DOIs from OpenAlex results
+        3. Batch fetch Semantic Scholar paper details using DOI:<doi>
+        4. Merge Semantic Scholar fields into the OpenAlex result when available
+        """
+        logger.info(f"[ReverseHybridSearch] Starting OpenAlex-first search for: {query}...")
+        openalex_provider = self.get_provider_as(
+            RetrievalServiceType.OPENALEX, OpenAlexProvider
+        )
+        openalex_results = []
+
+        if openalex_provider:
+            try:
+                logger.info(
+                    f"[ReverseHybridSearch] Fetching {openalex_limit} papers from OpenAlex..."
+                )
+                raw_openalex = await openalex_provider.search_papers(
+                    query, limit=openalex_limit, filters=filters
+                )
+                openalex_results = [
+                    openalex_provider.normalize_result(r) for r in raw_openalex
+                ]
+                logger.info(
+                    f"[ReverseHybridSearch] Retrieved {len(openalex_results)} papers from OpenAlex"
+                )
+            except Exception as e:
+                logger.error(f"[ReverseHybridSearch] OpenAlex search error: {e}")
+                raise e
+
+        semantic_enriched_count = 0
+        if enable_enrichment and openalex_results:
+            enriched_results = await self._enrich_with_semantic_scholar(openalex_results)
+            semantic_enriched_count = sum(
+                1
+                for result in enriched_results
+                if (normalize_external_ids(result.external_ids or {}).get("corpusid"))
+            )
+            logger.info(
+                f"[ReverseHybridSearch] Enriched {semantic_enriched_count}/{len(openalex_results)} papers with Semantic Scholar metadata"
+            )
+        else:
+            enriched_results = openalex_results
+
+        papers = batch_normalized_to_papers(enriched_results)
+
+        metadata = {
+            "openalex_count": len(openalex_results),
+            "semantic_scholar_enriched_count": semantic_enriched_count,
+            "final_returned": len(papers),
+        }
+        return papers, metadata
+
     async def get_multiple_papers(self, paper_ids: List[str]) -> List[PaperEnrichedDTO]:
         semantic_provider = self.get_provider_as(
             RetrievalServiceType.SEMANTIC, SemanticScholarProvider
@@ -231,7 +293,7 @@ class RetrievalService:
             result = await semantic_provider.get_multiple_papers_details(paper_ids)
             if result:
                 normalized_results = [
-                    semantic_provider.normalize_result(r) for r in result
+                    semantic_provider.normalize_result(r) for r in result if r not in (None, {})
                 ]
         except Exception as e:
             logger.error(f"Error fetching papers: {e}")
@@ -243,26 +305,40 @@ class RetrievalService:
         return papers
 
     async def get_paper_citations(
-        self, paper_id: str, limit: int= 100, offset: int = 0
+        self,
+        paper_id: str,
+        limit: int = 100,
+        offset: int = 0,
+        fields: Optional[str] = None,
     ) -> Dict[str, Any]:
         semantic_provider = self.get_provider_as(
             RetrievalServiceType.SEMANTIC, SemanticScholarProvider
         )
        
         result = await semantic_provider.get_citations(
-            paper_id, limit=limit, offset=offset
+            paper_id,
+            limit=limit,
+            offset=offset,
+            fields=fields,
         )
         return result.model_dump() if result else {}
     
     async def get_paper_references(
-        self, paper_id: str, limit: int= 100, offset: int = 0
+        self,
+        paper_id: str,
+        limit: int = 100,
+        offset: int = 0,
+        fields: Optional[str] = None,
     ) -> Dict[str, Any]:
         semantic_provider = self.get_provider_as(
             RetrievalServiceType.SEMANTIC, SemanticScholarProvider
         )
        
         result = await semantic_provider.get_references(
-            paper_id, limit=limit, offset=offset
+            paper_id,
+            limit=limit,
+            offset=offset,
+            fields=fields,
         )
         logger.debug(f"Fetched {len(result.data) if result else 0} references for paper {paper_id}")
         return result.model_dump() if result else {}
@@ -297,6 +373,7 @@ class RetrievalService:
         try:
             result = await semantic_provider.get_author_papers(author_id)
             if result:
+                logger.debug(f"Fetched {len(result.data)} papers for author {author_id} from Semantic Scholar")
                 normalized_results = [
                     semantic_provider.normalize_result(r) for r in result.data
                 ]
@@ -321,17 +398,18 @@ class RetrievalService:
         Returns:
             Enriched results with OpenAlex metadata merged
         """
-        openalex_provider: OpenAlexProvider = self.providers[RetrievalServiceType.OPENALEX]  
+        openalex_provider = self.get_provider_as(
+            RetrievalServiceType.OPENALEX, OpenAlexProvider)
 
         dois = []
         doi_to_semantic = {}
 
         for result in normalized_semantic_results:
-            external_ids = result.external_ids or {}
+            external_ids = normalize_external_ids(result.external_ids or {})
             if not external_ids:
                 continue
-            elif "DOI" in external_ids:
-                doi = external_ids["DOI"].strip().lower() # type: ignore
+            elif "doi" in external_ids:
+                doi = external_ids["doi"].strip().lower() # type: ignore
                 dois.append(doi)
                 doi_to_semantic[doi] = result
         openalex_data = {}
@@ -365,6 +443,69 @@ class RetrievalService:
                 enriched.append(merged)
             else:
                 enriched.append(normalized_semantic_result)
+
+        return enriched
+
+    async def _enrich_with_semantic_scholar(
+        self, normalized_openalex_results: List[NormalizedPaperResult]
+    ) -> List[NormalizedPaperResult]:
+        """Enrich OpenAlex results with Semantic Scholar details via DOI lookup."""
+        semantic_provider = self.get_provider_as(
+            RetrievalServiceType.SEMANTIC, SemanticScholarProvider
+        )
+
+        dois: List[str] = []
+        doi_to_openalex: Dict[str, NormalizedPaperResult] = {}
+        for result in normalized_openalex_results:
+            external_ids = normalize_external_ids(result.external_ids or {})
+            doi = external_ids.get("doi")
+            if not isinstance(doi, str) or not doi.strip():
+                continue
+            normalized_doi = doi.strip().lower().rstrip("/")
+            if normalized_doi in doi_to_openalex:
+                continue
+            dois.append(normalized_doi)
+            doi_to_openalex[normalized_doi] = result
+
+        semantic_by_doi: Dict[str, NormalizedPaperResult] = {}
+        if dois:
+            try:
+                raw_semantic = await semantic_provider.get_multiple_papers_details(
+                    [f"DOI:{doi}" for doi in dois]
+                )
+            except Exception as e:
+                logger.error(f"Error fetching Semantic Scholar DOI enrichment: {e}")
+                raw_semantic = []
+
+            for s2_result in raw_semantic or []:
+                if not s2_result:
+                    continue
+                normalized_semantic = semantic_provider.normalize_result(s2_result)
+                external_ids = normalize_external_ids(
+                    normalized_semantic.external_ids or {}
+                )
+                doi = external_ids.get("doi")
+                if isinstance(doi, str) and doi.strip():
+                    semantic_by_doi[doi.strip().lower().rstrip("/")] = normalized_semantic
+
+        enriched: List[NormalizedPaperResult] = []
+        for openalex_result in normalized_openalex_results:
+            external_ids = normalize_external_ids(openalex_result.external_ids or {})
+            doi = external_ids.get("doi")
+            semantic_result = (
+                semantic_by_doi.get(doi.strip().lower().rstrip("/"))
+                if isinstance(doi, str)
+                else None
+            )
+            if semantic_result:
+                enriched.append(
+                    self._merge_semantic_and_openalex(
+                        semantic_result,
+                        openalex_result,
+                    )
+                )
+            else:
+                enriched.append(openalex_result)
 
         return enriched
 
@@ -426,9 +567,10 @@ class RetrievalService:
         if not merged_model.external_ids:
             merged_model.external_ids = {}
 
-        merged_model.external_ids["OpenAlex"] = (
+        merged_model.external_ids["openalex"] = (
             openalex_result.paper_id.removeprefix("https://openalex.org/")
         )
+        merged_model.external_ids = normalize_external_ids(merged_model.external_ids)
 
         return merged_model
 
@@ -471,9 +613,8 @@ class RetrievalService:
             # Extract OpenAlex ID from external_ids (case-insensitive)
             openalex_id = None
             if paper.external_ids:
-                openalex_id = paper.external_ids.get(
-                    "OpenAlex"
-                ) or paper.external_ids.get("openalex")
+                normalized_external_ids = normalize_external_ids(paper.external_ids)
+                openalex_id = normalized_external_ids.get("openalex")
 
             if not openalex_id:
                 logger.info(
@@ -511,7 +652,19 @@ class RetrievalService:
             PDF content as bytes, or None if not available
         """
         try:
-            # S2 API-provided PDF URL
+            normalized_external_ids = normalize_external_ids(paper.external_ids or {})
+            arxiv_id = normalized_external_ids.get("arxiv")
+            if arxiv_id:
+                logger.info(f"Attempting dedicated arXiv PDF download for arXiv ID: {arxiv_id}")
+                arxiv_pdf_url = self.paper_retriever.get_pdf_url_from_arxiv_id(str(arxiv_id))
+                pdf_bytes = await self.paper_retriever.download_pdf(
+                    arxiv_pdf_url,
+                    check_open_access=False,
+                )
+                if pdf_bytes:
+                    return pdf_bytes
+                logger.warning(f"Failed dedicated arXiv download for arXiv ID: {arxiv_id}")
+
             if paper.pdf_url:
                 logger.info(
                     f"Attempting to download PDF from API-provided URL: {paper.pdf_url}"
@@ -521,31 +674,36 @@ class RetrievalService:
                 )
                 if pdfBytes:
                     return pdfBytes
-                else:
-                    logger.warning(f"Failed to download from API URL: {paper.pdf_url}")
-            else:
-                logger.info("Paper has no API-provided PDF URL, checking OpenAlex...")
-                openalex_id = None
-                if paper.external_ids:
-                    openalex_id = paper.external_ids.get(
-                        "OpenAlex"
-                    ) or paper.external_ids.get("openalex")
+                logger.warning(f"Failed to download from API URL: {paper.pdf_url}")
 
-                if not openalex_id:
-                    logger.info(
-                        f"Paper {paper.paper_id} has no OpenAlex ID, skipping TEI XML retrieval"
-                    )
-                    return None
+            logger.info(f"Falling back to OpenAlex content")
+            openalex_id = None
+            if normalized_external_ids:
+                openalex_id = normalized_external_ids.get("openalex")
 
-                pdfBytes = await self.paper_retriever.download_pdf_from_openalex(
-                    openalex_id=openalex_id
+            if not openalex_id:
+                logger.info(
+                    f"Paper {paper.paper_id} has no OpenAlex ID, skipping TEI XML retrieval"
+                )
+                return None
+
+            pdfBytes = await self.paper_retriever.download_pdf_from_openalex(
+                openalex_id=openalex_id
+            )
+            if pdfBytes:
+                return pdfBytes
+            
+            logger.info(f"Trying from DOI...")
+            doi = normalized_external_ids.get("doi")
+            if doi:
+                doi_url = f"https://doi.org/{str(doi).strip()}"
+                pdfBytes = await self.paper_retriever.download_pdf(
+                    doi_url, check_open_access=False
                 )
                 if pdfBytes:
                     return pdfBytes
-
-            logger.info(
-                "Paper is not open-access and has no PDF URL, cannot retrieve full-text"
-            )
+            logger.warning(f"Failed to retrieve PDF for paper {paper.paper_id} from all sources")
+            
             return None
         except Exception as e:
             logger.error(f"Error retrieving PDF for paper {paper.paper_id}: {e}")

@@ -5,17 +5,16 @@ Paper router for CRUD operations
 from fastapi import APIRouter, Query, Depends, Request, Body
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.database import get_db_session
+from app.core.db.database import get_db_session
 from app.core.dependencies import get_container
 from app.core.container import ServiceContainer
 from .repository import LoadOptions
 from app.domain.chunks.schemas import ChunkResponse
 from .schemas import (
-    PaperDetail,
-    PaperUpdate,
     PaginatedCitationsResponse,
     PaginatedReferencesResponse,
     ComputeTagsRequest,
+    PaperDetailResponse,
 )
 from app.domain.conversations.service import ConversationService
 from app.domain.conversations.schemas import ConversationDetail, ConversationSummary
@@ -27,7 +26,7 @@ from app.core.exceptions import NotFoundException
 router = APIRouter()
 
 
-@router.get("", response_model=PaginatedData[PaperDetail])
+@router.get("", response_model=PaginatedData[PaperDetailResponse])
 async def list_papers(
     request: Request,
     page: int = Query(1, ge=1, description="Page number"),
@@ -38,7 +37,7 @@ async def list_papers(
     ),
     container: ServiceContainer = Depends(get_container),
     current_user: DBUser = Depends(get_current_user),
-) -> PaginatedData[PaperDetail]:
+) -> PaginatedData[PaperDetailResponse]:
     """
     List all papers with pagination
 
@@ -66,13 +65,13 @@ async def list_papers(
     )
 
 
-@router.get("/{paper_id}", response_model=PaperDetail)
+@router.get("/{paper_id}", response_model=PaperDetailResponse)
 async def get_paper(
     request: Request,
     paper_id: str,
     container: ServiceContainer = Depends(get_container),
     current_user: DBUser = Depends(get_current_user),
-) -> PaperDetail:
+) -> PaperDetailResponse:
     """
     Get a single paper by paper_id
 
@@ -95,24 +94,23 @@ async def get_paper_citations(
     paper_id: str,
     offset: int = Query(0, ge=0, description="Pagination offset"),
     limit: int = Query(100, ge=1, le=1000, description="Max results per page"),
-    fields: Optional[str] = Query(None, description="Comma-separated S2 fields"),
     container: ServiceContainer = Depends(get_container),
     current_user: DBUser = Depends(get_current_user),
 ) -> PaginatedCitationsResponse:
     """
-    Get papers that cite this paper (live from Semantic Scholar).
+    Get papers that cite this paper from local database.
 
     - **paper_id**: The paper's unique identifier
     - **offset**: Pagination offset (0-based)
     - **limit**: Number of results (max 1000 per S2 API)
     - **fields**: Optional S2 fields (e.g., "title,authors,abstract,year")
 
-    Returns paginated list of citing papers with fresh citation data.
+    Returns paginated list of citing papers from stored citation graph.
     Includes citation context and whether the citation is influential.
     """
 
-    citations_data = await container.paper_service.get_paper_citations(
-        paper_id, limit=1, offset=0
+    citations_data = await container.paper_service.get_paper_citations_from_db(
+        paper_id, limit=limit, offset=offset
     )
     from .schemas import PaginatedCitationsResponse
 
@@ -132,17 +130,17 @@ async def get_paper_references(
     current_user: DBUser = Depends(get_current_user),
 ) -> PaginatedReferencesResponse:
     """
-    Get papers referenced by this paper (live from Semantic Scholar).
+    Get papers referenced by this paper from local database.
 
     - **paper_id**: The paper's unique identifier
     - **offset**: Pagination offset (0-based)
     - **limit**: Number of results (max 1000 per S2 API)
     - **fields**: Optional S2 fields (e.g., "title,authors,abstract,year")
 
-    Returns paginated list of referenced papers with fresh data.
+    Returns paginated list of referenced papers from stored citation graph.
     Includes citation context and whether the reference is influential.
     """
-    references_data = await container.paper_service.get_paper_references(
+    references_data = await container.paper_service.get_paper_references_from_db(
         paper_id, offset=offset, limit=limit
     )
 

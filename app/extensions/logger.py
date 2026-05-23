@@ -57,7 +57,7 @@ def create_logger(name: str, filename: str = "app.log", level=None) -> logging.L
     logger.addHandler(console_handler)
 
     # If you want to log to a file, add a file handler as well
-    log_dir = "logs"  # Example log directory
+    log_dir = "logs" 
     os.makedirs(log_dir, exist_ok=True)
     file_handler = logging.FileHandler(os.path.join(log_dir, filename))
     file_handler.setLevel(level)  # Set handler level too

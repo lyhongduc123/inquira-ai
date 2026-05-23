@@ -45,6 +45,12 @@ class BookmarkListResponse(CamelModel):
     limit: int
 
 
+class BookmarkCheckResponse(CamelModel):
+    """Bookmark status for a paper."""
+    is_bookmarked: bool
+    bookmark_id: Optional[int] = None
+
+
 # Import for type checking
 from app.domain.papers.schemas import PaperMetadata
 BookmarkWithPaperResponse.model_rebuild()
