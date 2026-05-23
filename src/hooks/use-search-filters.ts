@@ -1,70 +1,94 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { SearchFilters } from "@/app/_components/FilterPanel";
+import { SearchFilters } from "@/app/(main)/_components/FilterPanel";
+import { usePipelineStore } from "@/store/pipeline-store";
 
 /**
- * Hook to manage search filters via URL parameters.
- * This ensures filters are persistent across page refreshes and sharable via URL.
+ * Hook to manage search filters via URL parameters
+ * and chat pipeline mode via global store.
  */
 export function useSearchFilters() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const persistedPipeline = usePipelineStore((state) => state.pipeline);
+  const hasHydrated = usePipelineStore((state) => state.hasHydrated);
+  const setPipeline = usePipelineStore((state) => state.setPipeline);
+  const pipeline: "research" | "agent" = hasHydrated
+    ? persistedPipeline
+    : "research";
 
-  const state = useMemo((): { filters: SearchFilters; pipeline: "research" | "agent" } => {
+  const filters = useMemo((): SearchFilters => {
     const f: SearchFilters = {};
 
-    const author = searchParams.get("author");
-    if (author) f.author = author;
+    const authorName =
+      searchParams.get("authorName") ||
+      searchParams.get("author_name") ||
+      searchParams.get("author");
+    if (authorName) {
+      f.authorName = authorName;
+    }
 
-    const yearMin = searchParams.get("year_min");
-    if (yearMin) f.year_min = parseInt(yearMin, 10);
+    const yearMin = searchParams.get("yearMin") || searchParams.get("year_min");
+    if (yearMin) f.yearMin = parseInt(yearMin, 10);
 
-    const yearMax = searchParams.get("year_max");
-    if (yearMax) f.year_max = parseInt(yearMax, 10);
+    const yearMax = searchParams.get("yearMax") || searchParams.get("year_max");
+    if (yearMax) f.yearMax = parseInt(yearMax, 10);
 
     const venue = searchParams.get("venue");
     if (venue) f.venue = venue;
 
-    const minCitations = searchParams.get("min_citations");
-    if (minCitations) f.min_citations = parseInt(minCitations, 10);
-
-    const maxCitations = searchParams.get("max_citations");
-    if (maxCitations) f.max_citations = parseInt(maxCitations, 10);
-
-    const categories = searchParams.get("category")?.split(",").filter(Boolean);
-    if (categories && categories.length > 0) f.category = categories;
-
-    const openAccess = searchParams.get("open_access");
-    if (openAccess === "true") f.openAccessOnly = true;
-
-    const excludePreprints = searchParams.get("exclude_preprints");
-    if (excludePreprints === "true") f.excludePreprints = true;
-
-    const topJournals = searchParams.get("top_journals");
-    if (topJournals === "true") f.topJournalsOnly = true;
-
-    // Handle pipeline mode
-    const pipelineParam = searchParams.get("mode");
-    const mode = (pipelineParam === "agent" ? "agent" : "research") as "research" | "agent";
-
-    // Handle legacy yearRange for UI compatibility if needed
-    if (f.year_min !== undefined || f.year_max !== undefined) {
-      f.yearRange = {
-        min: f.year_min,
-        max: f.year_max,
-      };
+    const minCitations =
+      searchParams.get("minCitationCount") ||
+      searchParams.get("min_citation_count") ||
+      searchParams.get("min_citations");
+    if (minCitations) {
+      f.minCitationCount = parseInt(minCitations, 10);
     }
 
-    return { filters: f, pipeline: mode };
+    const maxCitations =
+      searchParams.get("maxCitationCount") ||
+      searchParams.get("max_citation_count") ||
+      searchParams.get("max_citations");
+    if (maxCitations) {
+      f.maxCitationCount = parseInt(maxCitations, 10);
+    }
+
+    const journalQuartile =
+      searchParams.get("journalQuartile") ||
+      searchParams.get("journal_quartile") ||
+      searchParams.get("journal_rank");
+    if (journalQuartile && ["Q1", "Q2", "Q3", "Q4"].includes(journalQuartile)) {
+      f.journalQuartile = journalQuartile as "Q1" | "Q2" | "Q3" | "Q4";
+    }
+
+    const fields =
+      searchParams.get("fieldOfStudy")?.split(",").filter(Boolean)
+      || searchParams.get("field_of_study")?.split(",").filter(Boolean)
+      || searchParams.get("fields_of_study")?.split(",").filter(Boolean)
+      || searchParams.get("category")?.split(",").filter(Boolean);
+    if (fields && fields.length > 0) {
+      f.fieldOfStudy = fields;
+    }
+
+    return f;
   }, [searchParams]);
+
+  useEffect(() => {
+    const legacyModeParam = searchParams.get("mode");
+    if (legacyModeParam === "agent" || legacyModeParam === "research") {
+      if (legacyModeParam !== persistedPipeline) {
+        setPipeline(legacyModeParam);
+      }
+    }
+  }, [persistedPipeline, searchParams, setPipeline]);
 
   const setParams = useCallback(
     (newFilters: SearchFilters, newPipeline?: "research" | "agent") => {
       const params = new URLSearchParams(searchParams.toString());
 
       // Helper to set or delete param
-      const updateParam = (key: string, value: any) => {
+      const updateParam = (key: string, value: unknown) => {
         if (value !== undefined && value !== null && value !== "" && value !== false) {
           params.set(key, String(value));
         } else {
@@ -72,45 +96,62 @@ export function useSearchFilters() {
         }
       };
 
-      updateParam("author", newFilters.author);
-      
-      // Prefer yearRange if it exists, otherwise use flat fields
-      const yearMin = newFilters.yearRange?.min ?? newFilters.year_min;
-      const yearMax = newFilters.yearRange?.max ?? newFilters.year_max;
-      updateParam("year_min", yearMin);
-      updateParam("year_max", yearMax);
+      updateParam("authorName", newFilters.authorName);
+      updateParam("yearMin", newFilters.yearMin);
+      updateParam("yearMax", newFilters.yearMax);
 
       updateParam("venue", newFilters.venue);
-      updateParam("min_citations", newFilters.min_citations);
-      updateParam("max_citations", newFilters.max_citations);
+      updateParam("minCitationCount", newFilters.minCitationCount);
+      updateParam("maxCitationCount", newFilters.maxCitationCount);
+      updateParam("journalQuartile", newFilters.journalQuartile);
       
-      if (newFilters.category && newFilters.category.length > 0) {
-        params.set("category", newFilters.category.join(","));
+      const selectedFields = newFilters.fieldOfStudy;
+      if (selectedFields && selectedFields.length > 0) {
+        params.set("fieldOfStudy", selectedFields.join(","));
       } else {
-        params.delete("category");
+        params.delete("fieldOfStudy");
       }
 
-      updateParam("open_access", newFilters.openAccessOnly);
-      updateParam("exclude_preprints", newFilters.excludePreprints);
-      updateParam("top_journals", newFilters.topJournalsOnly);
+      [
+        "author",
+        "author_name",
+        "year_min",
+        "year_max",
+        "min_citation_count",
+        "max_citation_count",
+        "min_citations",
+        "max_citations",
+        "journal_quartile",
+        "journal_rank",
+        "field_of_study",
+        "fields_of_study",
+        "category",
+        "open_access",
+        "exclude_preprints",
+        "top_journals",
+      ].forEach((key) => params.delete(key));
+
+      if (params.has("mode")) {
+        params.delete("mode");
+      }
 
       if (newPipeline) {
-        params.set("mode", newPipeline);
+        setPipeline(newPipeline);
       }
 
       const queryString = params.toString();
       router.replace(`${pathname}${queryString ? `?${queryString}` : ""}`, { scroll: false });
     },
-    [pathname, router, searchParams]
+    [pathname, router, searchParams, setPipeline]
   );
 
   const clearFilters = useCallback(() => {
-    setParams({}, state.pipeline);
-  }, [setParams, state.pipeline]);
+    setParams({}, pipeline);
+  }, [setParams, pipeline]);
 
   return {
-    filters: state.filters,
-    pipeline: state.pipeline,
+    filters,
+    pipeline,
     setParams,
     clearFilters,
   };

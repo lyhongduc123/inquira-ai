@@ -13,9 +13,21 @@ export function AuthCallbackPageClient() {
     const handleCallback = async () => {
       const success = searchParams.get("success");
       const error = searchParams.get("error");
+      const isPopup = window.opener && window.opener !== window;
+
+      const notifyOpenerAndClose = (payload: { type: string; error?: string }) => {
+        if (!isPopup) return;
+
+        try {
+          window.opener.postMessage(payload, window.location.origin);
+        } finally {
+          window.close();
+        }
+      };
 
       if (error) {
         console.error("Auth error:", error);
+        notifyOpenerAndClose({ type: "oauth:error", error });
         router.push("/login?error=" + error);
         return;
       }
@@ -24,15 +36,22 @@ export function AuthCallbackPageClient() {
         try {
           await login();
 
+          if (isPopup) {
+            notifyOpenerAndClose({ type: "oauth:success" });
+            return;
+          }
+
           const redirectTo = sessionStorage.getItem("auth_redirect") || "/";
           sessionStorage.removeItem("auth_redirect");
 
           router.push(redirectTo);
         } catch (error) {
           console.error("Login failed:", error);
+          notifyOpenerAndClose({ type: "oauth:error", error: "login_failed" });
           router.push("/login?error=login_failed");
         }
       } else {
+        notifyOpenerAndClose({ type: "oauth:error", error: "missing_tokens" });
         router.push("/login?error=missing_tokens");
       }
     };

@@ -4,3 +4,4 @@
 export * from './date'
 export * from './cookie'
 export * from './cn'
+export * from './clipboard'

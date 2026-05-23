@@ -1,10 +1,12 @@
 export interface ChatSubmitFilters {
-  author?: string;
+  authorName?: string;
   yearMin?: number;
   yearMax?: number;
   venue?: string;
-  minCitations?: number;
-  maxCitations?: number;
+  minCitationCount?: number;
+  maxCitationCount?: number;
+  journalQuartile?: string;
+  fieldOfStudy?: string[];
   paperIds?: string[];
 }
 

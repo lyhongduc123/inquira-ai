@@ -1,5 +1,44 @@
 import { cva, VariantProps } from "class-variance-authority";
 import { clsx } from "clsx";
+import { Streamdown } from "streamdown";
+
+function needsRichRender(text: string) {
+  // math
+  if (/\$[^$]+\$/.test(text)) return true;
+
+  // latex-like commands
+  if (/\\[a-zA-Z]+/.test(text)) return true;
+
+  // markdown links
+  if (/\[.+?\]\(.+?\)/.test(text)) return true;
+
+  // inline URLs
+  if (/https?:\/\/\S+/.test(text)) return true;
+
+  return false;
+}
+
+function renderMaybeRich(
+  text: React.ReactNode,
+  className?: string,
+) {
+  if (typeof text !== "string") return text;
+
+  if (!needsRichRender(text)) {
+    return <span className={className}>{text}</span>;
+  }
+
+  return (
+    <Streamdown
+      className={className}
+      components={{
+        p: ({ children }) => <span>{children}</span>,
+      }}
+    >
+      {text}
+    </Streamdown>
+  );
+}
 
 // Typography variants
 const headingVariants = cva("scroll-m-20", {
@@ -146,7 +185,7 @@ export function TypographyH1({
       )}
       {...props}
     >
-      {children}
+      {renderMaybeRich(children, className)}
     </h1>
   );
 }
@@ -168,7 +207,7 @@ export function TypographyH2({
       )}
       {...props}
     >
-      {children}
+      {renderMaybeRich(children, className)}
     </h2>
   );
 }
@@ -189,8 +228,8 @@ export function TypographyH3({
         className,
       )}
       {...props}
-    >
-      {children}
+      >
+        {renderMaybeRich(children, className)}
     </h3>
   );
 }
@@ -212,7 +251,7 @@ export function TypographyH4({
       )}
       {...props}
     >
-      {children}
+      {renderMaybeRich(children, className)}
     </h4>
   );
 }
@@ -235,7 +274,7 @@ export function TypographyP({
       )}
       {...props}
     >
-      {children}
+      {renderMaybeRich(children, className)}
     </p>
   );
 }

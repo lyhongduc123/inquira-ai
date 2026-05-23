@@ -27,7 +27,7 @@ export function Brand({
       </Avatar>
       {showText && (
         <Link href="/" className="ml-2 select-none text-lg font-bold">
-          Exegent
+          Inquira
         </Link>
       )}
     </HStack>

@@ -1,19 +1,19 @@
 import { apiClient } from "./api-client";
 import type {
-  ConversationCreate,
-  ConversationUpdate,
-  Conversation,
-  ConversationDelete
+  ConversationCreateDTO,
+  ConversationUpdateDTO,
+  ConversationDTO,
+  ConversationDeleteDTO
 } from "@/types/conversation.type";
 import type { PaginatedData } from "@/types/api.type";
 
 const CONVERSATIONS_BASE = "/api/v1/conversations";
 
-type RawConversation = Conversation & {
+type RawConversation = ConversationDTO & {
   conversationId?: string;
 };
 
-function normalizeConversation(raw: RawConversation): Conversation {
+function normalizeConversation(raw: RawConversation): ConversationDTO {
   return {
     ...raw,
     id: raw.id || raw.conversationId || "",
@@ -28,8 +28,16 @@ export const conversationsApi = {
     page?: number;
     page_size?: number;
     archived?: boolean;
-  } = {}): Promise<PaginatedData<Conversation>> {
-    const { page = 1, page_size = 20, archived } = params;
+    query?: string;
+    search_messages?: boolean;
+  } = {}): Promise<PaginatedData<ConversationDTO>> {
+    const {
+      page = 1,
+      page_size = 20,
+      archived,
+      query,
+      search_messages,
+    } = params;
 
     const queryParams = new URLSearchParams({
       page: page.toString(),
@@ -38,6 +46,12 @@ export const conversationsApi = {
 
     if (archived !== undefined) {
       queryParams.append("archived", archived.toString());
+    }
+    if (query?.trim()) {
+      queryParams.append("query", query.trim());
+    }
+    if (search_messages !== undefined) {
+      queryParams.append("search_messages", search_messages.toString());
     }
 
     const response = await apiClient.get<PaginatedData<RawConversation>>(
@@ -53,7 +67,7 @@ export const conversationsApi = {
   /**
    * Create a new conversation
    */
-  async create(data: ConversationCreate = {}): Promise<Conversation> {
+  async create(data: ConversationCreateDTO = {}): Promise<ConversationDTO> {
     const response = await apiClient.post<RawConversation>(
       CONVERSATIONS_BASE,
       data,
@@ -64,7 +78,7 @@ export const conversationsApi = {
   /**
    * Get a specific conversation by ID with all messages
    */
-  async get(conversationId: string): Promise<Conversation> {
+  async get(conversationId: string): Promise<ConversationDTO> {
     const response = await apiClient.get<RawConversation>(
       `${CONVERSATIONS_BASE}/${conversationId}`
     );
@@ -76,8 +90,8 @@ export const conversationsApi = {
    */
   async update(
     conversationId: string,
-    updates: ConversationUpdate
-  ): Promise<Conversation> {
+    updates: ConversationUpdateDTO
+  ): Promise<ConversationDTO> {
     const response = await apiClient.put<RawConversation>(
       `${CONVERSATIONS_BASE}/${conversationId}`,
       updates
@@ -88,8 +102,8 @@ export const conversationsApi = {
   /**
    * Delete a conversation and all its messages
    */
-  async delete(conversationId: string): Promise<ConversationDelete> {
-    return apiClient.delete<ConversationDelete>(
+  async delete(conversationId: string): Promise<ConversationDeleteDTO> {
+    return apiClient.delete<ConversationDeleteDTO>(
       `${CONVERSATIONS_BASE}/${conversationId}`
     );
   },

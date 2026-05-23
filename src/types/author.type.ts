@@ -1,14 +1,14 @@
 import { PaperMetadata } from "./paper.type";
 
-export interface QuartileBreakdown {
-  Q1: number;
-  Q2: number;
-  Q3: number;
-  Q4: number;
+export interface QuartileBreakdownDTO {
+  q1: number;
+  q2: number;
+  q3: number;
+  q4: number;
   unknown: number;
 }
 
-export interface CoAuthor {
+export interface CoAuthorDTO {
   authorId: string;
   name: string;
   hIndex: number | null;
@@ -16,7 +16,7 @@ export interface CoAuthor {
   collaborationCount: number;
 }
 
-export interface AuthorDetail {
+export interface AuthorDetailDTO {
   id: number;
   authorId: string;
   openalexId: string | null;
@@ -36,6 +36,7 @@ export interface AuthorDetail {
   authorInstitutions: Array<{
     id: string;
     name: string;
+    institution: Record<string, string> | null;
     country: string | null;
     startDate?: string | null;
     endDate?: string | null;
@@ -55,23 +56,21 @@ export interface AuthorDetail {
   lastPaperIndexedAt: string | null;
   isEnriched: boolean;
   enrichmentStatus: {
-    status: 'needs_enrichment' | 'enriching' | 'completed' | 'failed' | string;
+    status: "needs_enrichment" | "enriching" | "completed" | "failed" | string;
     taskId?: string;
     message?: string;
   } | null;
 }
 
-export interface AuthorDetailWithPapers extends AuthorDetail {
+export interface AuthorDetailWithPapersDTO extends AuthorDetailDTO {
   papers: PaperMetadata[];
-  quartileBreakdown: QuartileBreakdown;
-  coAuthors: CoAuthor[];
-  papersByYear: Record<number, number> | null;
-  countsByYear: Array<{
-    year: number;
-    worksCount: number;
-    oaWorksCount: number;
-    citedByCount: number;
-  }> | null;
+  quartileBreakdown: QuartileBreakdownDTO;
+  coAuthors: CoAuthorDTO[];
+  countsByYear: Record<string, { papers: number; citations: number }> | null;
+  openalexCountsByYear?: Record<
+    string,
+    { papers: number; citations: number }
+  > | null;
   topics: Array<{
     displayName: string;
     count: number;
@@ -86,7 +85,7 @@ export interface AuthorDetailWithPapers extends AuthorDetail {
   }> | null;
 }
 
-export interface AuthorMetadata {
+export interface AuthorMetadataDTO {
   name: string;
   authorId?: string | null;
   citationCount?: number | null;

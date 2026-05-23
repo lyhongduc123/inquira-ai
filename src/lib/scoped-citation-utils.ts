@@ -46,14 +46,32 @@ export function createScopedCitationRefMap(refs?: ScopedCitationRef[]): Map<stri
       continue
     }
 
-    map.set(getScopedCitationKey(ref), ref)
+    const scopedKey = getScopedCitationKey(ref)
+
+    // Keep both plain and prefixed keys for backward-safe lookups.
+    map.set(scopedKey, ref)
+    map.set(`key:${scopedKey}`, ref)
 
     if (ref.marker) {
       map.set(ref.marker, ref)
+      map.set(`marker:${ref.marker}`, ref)
     }
   }
 
   return map
+}
+
+export function getScopedCitationRef(
+  map: Map<string, ScopedCitationRef>,
+  scopedKey: string,
+  marker: string,
+): ScopedCitationRef | undefined {
+  return (
+    map.get(scopedKey)
+    || map.get(`key:${scopedKey}`)
+    || map.get(marker)
+    || map.get(`marker:${marker}`)
+  )
 }
 
 export function mergeScopedCitationRefs(

@@ -12,7 +12,7 @@ export interface OAuthUrlResponse {
   authorizationUrl: string;
 }
 
-export interface AuthState {
+export interface AuthSessionState {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;

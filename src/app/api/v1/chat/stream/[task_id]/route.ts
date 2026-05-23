@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
+import { API_BASE_URL } from '@/core'
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
 /**
  * GET /api/v1/chat/stream/[task_id] - Stream task events (v2)
@@ -32,6 +34,7 @@ export async function GET(
         method: 'GET',
         headers,
         credentials: 'include',
+        cache: 'no-store',
       },
     )
 

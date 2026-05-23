@@ -1,43 +1,58 @@
-/**
- * Bookmark Store - Client-side bookmark state management
- * Tracks bookmarked paper IDs for quick visualization
- */
-
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
 
 interface BookmarkStore {
-  bookmarks: Record<string, number>;
-
+  bookmarksByPaperId: Record<string, number>;
   addBookmark: (paperId: string, bookmarkId: number) => void;
+  addBookmarks: (bookmarks: Array<{ paperId: string; bookmarkId: number }>) => void;
   removeBookmark: (paperId: string) => void;
+  removeBookmarkById: (bookmarkId: number) => void;
+  clearBookmarks: () => void;
   isBookmarked: (paperId: string) => boolean;
   getBookmarkId: (paperId: string) => number | undefined;
 }
 
-export const useBookmarkStore = create<BookmarkStore>()(
-  persist(
-    (set, get) => ({
-      bookmarks: {},
+export const useBookmarkStore = create<BookmarkStore>()((set, get) => ({
+  bookmarksByPaperId: {},
 
-      addBookmark: (paperId, bookmarkId) =>
-        set((state) => ({
-          bookmarks: { ...state.bookmarks, [paperId]: bookmarkId },
-        })),
+  addBookmark: (paperId, bookmarkId) =>
+    set((state) => ({
+      bookmarksByPaperId: {
+        ...state.bookmarksByPaperId,
+        [paperId]: bookmarkId,
+      },
+    })),
 
-      removeBookmark: (paperId) =>
-        set((state) => {
-          const newBookmarks = { ...state.bookmarks };
-          delete newBookmarks[paperId];
-          return { bookmarks: newBookmarks };
-        }),
-
-      isBookmarked: (paperId) => !!get().bookmarks[paperId],
-
-      getBookmarkId: (paperId) => get().bookmarks[paperId],
+  addBookmarks: (bookmarks) =>
+    set((state) => {
+      const next = { ...state.bookmarksByPaperId };
+      for (const bookmark of bookmarks) {
+        next[bookmark.paperId] = bookmark.bookmarkId;
+      }
+      return { bookmarksByPaperId: next };
     }),
-    {
-      name: "bookmark-storage",
-    },
-  ),
-);
+
+  removeBookmark: (paperId) =>
+    set((state) => {
+      const next = { ...state.bookmarksByPaperId };
+      delete next[paperId];
+      return { bookmarksByPaperId: next };
+    }),
+
+  removeBookmarkById: (bookmarkId) =>
+    set((state) => {
+      const next = { ...state.bookmarksByPaperId };
+      for (const [paperId, storedBookmarkId] of Object.entries(next)) {
+        if (storedBookmarkId === bookmarkId) {
+          delete next[paperId];
+          break;
+        }
+      }
+      return { bookmarksByPaperId: next };
+    }),
+
+  clearBookmarks: () => set({ bookmarksByPaperId: {} }),
+
+  isBookmarked: (paperId) => get().bookmarksByPaperId[paperId] !== undefined,
+
+  getBookmarkId: (paperId) => get().bookmarksByPaperId[paperId],
+}));

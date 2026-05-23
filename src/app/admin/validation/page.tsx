@@ -27,7 +27,7 @@ import {
   useValidationStats,
 } from '@/hooks/use-validation'
 import { conversationsApi } from '@/lib/api/conversations-api'
-import type { Conversation, Message } from '@/types/conversation.type'
+import type { ConversationDTO, MessageDTO } from '@/types/conversation.type'
 import type {
   ValidationDetail,
   ValidationHistoryItem,
@@ -101,7 +101,7 @@ function toInspectionFromDetail(detail: ValidationDetail): ValidationInspection 
   }
 }
 
-function getPreviousUserQuery(conversation: Conversation | null, message: Message | null): string {
+function getPreviousUserQuery(conversation: ConversationDTO | null, message: MessageDTO | null): string {
   if (!conversation || !message) return ''
   const messages = conversation.messages ?? []
   const messageIndex = messages.findIndex((item) => item.id === message.id)
@@ -129,8 +129,8 @@ export default function ValidationPage() {
   const [historyPage, setHistoryPage] = useState(1)
   const [historyPageSize, setHistoryPageSize] = useState(50)
 
-  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null)
-  const [selectedMessage, setSelectedMessage] = useState<Message | null>(null)
+  const [selectedConversation, setSelectedConversation] = useState<ConversationDTO | null>(null)
+  const [selectedMessage, setSelectedMessage] = useState<MessageDTO | null>(null)
   const [selectedHistoryId, setSelectedHistoryId] = useState<number | null>(null)
   const [isLoadingConversationDetail, setIsLoadingConversationDetail] = useState(false)
   const selectedValidationRef = useRef<HTMLDivElement | null>(null)
@@ -275,7 +275,7 @@ export default function ValidationPage() {
     selectedValidationRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }, [selectedHistoryInspection])
 
-  const buildConversationContext = (message: Message): string => {
+  const buildConversationContext = (message: MessageDTO): string => {
     const paperSnapshots = message.paperSnapshots ?? []
     const paperIds = paperSnapshots.map((paper) => paper.paperId)
 
@@ -338,7 +338,7 @@ export default function ValidationPage() {
     }
   }, [deleteValidationMutation, selectedHistoryId])
 
-  const selectConversation = async (conversation: Conversation): Promise<void> => {
+  const selectConversation = async (conversation: ConversationDTO): Promise<void> => {
     setSelectedMessage(null)
     setSelectedConversation({
       ...conversation,
@@ -417,7 +417,7 @@ export default function ValidationPage() {
                 ) : (
                   <ScrollArea className="h-[420px]">
                     <div className="space-y-2">
-                      {conversations.map((item: Conversation) => (
+                      {conversations.map((item: ConversationDTO) => (
                         <button
                           key={item.id}
                           type="button"
