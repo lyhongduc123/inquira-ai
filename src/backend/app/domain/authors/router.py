@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
-from app.db.database import get_db_session
+from app.core.db.database import get_db_session
 from app.core.dependencies import get_container
 from app.core.container import ServiceContainer
 from .schemas import (
@@ -27,6 +27,7 @@ from .schemas import (
 )
 from app.models.authors import DBAuthor
 from app.extensions.logger import create_logger
+from app.domain.papers.schemas import PaperMetadata
 logger = create_logger(__name__)
 
 router = APIRouter()
@@ -177,13 +178,12 @@ async def get_author_details(
         "quartile_breakdown": quartile_breakdown,
         "co_authors": co_authors,
         "counts_by_year": result.get("counts_by_year", {}),
-        "papers_by_year": result["papers_by_year"],
+        "openalex_counts_by_year": result.get("openalex_counts_by_year", {}),
         "is_enriched": result["is_enriched"],
         "enrichment_status": enrichment_status
     }
     
     return AuthorDetailWithPapersResponse(**author_dict)
-
 
 @router.get("/{author_id}/collaborations", response_model=AuthorCollaborationListResponse)
 async def get_author_collaborations(
@@ -338,8 +338,17 @@ async def get_author_publications(
         sort_order=sort_order,
         refresh_live_metrics=refresh_live_metrics,
     )
+    # for paper in papers:
+    #     logger.debug(f"publication: {paper.title}, journal: {paper.journal}")
 
-    items = [AuthorPaperSummary.model_validate(p) for p in papers]
+    items = [
+        AuthorPaperSummary.model_validate(
+            PaperMetadata.from_db_model(paper).model_dump(by_alias=True)
+        )
+        for paper in papers
+    ]
+    # for item in items:
+    #     logger.debug(f"publication summary: {item.title}, journal: {item.journal}")
     return AuthorPublicationsListResponse(
         total=total,
         offset=offset,

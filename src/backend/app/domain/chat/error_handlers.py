@@ -6,9 +6,11 @@ Handles gibberish input, no results, and other edge cases.
 from typing import AsyncGenerator
 
 from redis import event
+from app.domain.chat.responses import response_registry
 from app.domain.conversations.service import ConversationService
 from app.extensions import stream_event
 from app.extensions.logger import create_logger
+from app.extensions.stream import stream_like_llm
 from .event_emitter import ChatEventEmitter
 from app.domain.chat import event_emitter
 
@@ -17,15 +19,6 @@ logger = create_logger(__name__)
 
 class ChatErrorHandler:
     """Handles error cases and special responses for chat"""
-    @staticmethod
-    async def _stream_text_in_chunks(text: str, event_emitter: ChatEventEmitter, delay: float = 0.05) -> AsyncGenerator[str, None]:
-        """Simulates LLM streaming by yielding paragraphs or sentences."""
-        tokens = text.split(" ")
-        for i, token in enumerate(tokens):
-            content = token if i == len(tokens) - 1 else token + " "
-            async for evt in event_emitter.emit_chunk_event(content):
-                yield evt
-
     @staticmethod
     async def handle_gibberish_input(
         conversation_service: ConversationService,
@@ -47,8 +40,9 @@ class ChatErrorHandler:
             SSE events with introduction message
         """
         logger.info(f"Gibberish detected: {query}")
-        
-        # Save user message
+        async for evt in event_emitter.emit_thinking_event("Thinking how to answer..."):
+            yield evt
+            
         try:
             await conversation_service.add_message_to_conversation(
                 conversation_id=conversation_id,
@@ -59,34 +53,15 @@ class ChatErrorHandler:
             )
         except Exception as e:
             logger.error(f"Failed to save user message: {e}")
+            async for evt in event_emitter.emit_error_event("Sorry, something went wrong while processing your message."):
+                yield evt
         
-        # Build introduction message
-        intro_parts = [
-            "Hello! I'm exegent, an academic research assistant.\n\n",
-            "I'm here to help you explore and understand academic research papers! I can:\n\n",
-            " **Search** through millions of research papers across all disciplines  \n",
-            " **Analyze** and summarize complex scientific papers  \n",
-            " **Find** relevant citations and evidence for your questions  \n",
-            " **Compare** different research findings and methodologies  \n\n",
-            "**How to get started:**\n\n",
-            "Ask me clear research questions like:\n",
-            '- "What are the latest findings on climate change?"\n',
-            '- "How does machine learning improve medical diagnosis?"\n',
-            '- "What are the ethical implications of AI?"\n\n',
-            "**Tips for better results:**\n",
-            "- Be specific about what you want to know\n",
-            "- Use proper words and complete sentences\n",
-            "- Ask about scientific topics, research areas, or academic questions\n\n",
-            "Try asking me a research question, and I'll find and analyze relevant papers for you!",
-        ]
+        intro_message = response_registry.ResponseRegistry.get("gibberish")
         
-        intro_message = "".join(intro_parts)
+        for evt in stream_like_llm(intro_message):
+            async for event in event_emitter.emit_chunk_event(evt):
+                yield event
         
-        # Stream the message
-        async for evt in stream_event(name="chunk", data={"text": intro_message}):
-            yield evt
-        
-        # Save assistant message
         try:
             await conversation_service.add_message_to_conversation(
                 conversation_id=conversation_id,
@@ -97,9 +72,10 @@ class ChatErrorHandler:
             )
         except Exception as e:
             logger.error(f"Failed to save assistant message: {e}")
+            async for evt in event_emitter.emit_error_event("Sorry, something went wrong while saving the response."):
+                yield evt
         
-        # Signal completion
-        async for evt in stream_event(name="done", data=None):
+        async for evt in event_emitter.emit_done_event():
             yield evt
     
     @staticmethod
